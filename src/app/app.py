@@ -18,9 +18,44 @@ from backend import get_backend
 from models import (
     AuditStatusByBU,
     ClosureByBU,
+    ClosureKPIs,
+    DocumentFlowSummary,
+    ErrorAnalysisSummary,
     GlobalClosureSent,
     RejectedFile,
 )
+
+
+@st.cache_data(ttl=60)
+def _load_closure_data(catalog: str, schema: str, period: str):
+    """
+    Load all app data from backend. Cached 60s per (catalog, schema, period)
+    to avoid refetching on every Streamlit rerun.
+    Returns (use_real_data, kpis, closure_by_bu, flow, err_summary, audit_list,
+             global_sent, rejected, sla_list, quality_list).
+    """
+    backend, use_real_data = get_backend(catalog, schema, period or None)
+    kpis = backend.get_kpis()
+    closure_by_bu = backend.get_closure_by_bu()
+    flow = backend.get_document_flow()
+    err_summary = backend.get_error_analysis()
+    audit_list = backend.get_audit_status_by_bu()
+    global_sent = backend.get_global_closure_sent()
+    rejected = backend.get_rejected_files()
+    sla_list = backend.get_sla_metrics()
+    quality_list = backend.get_quality_summary()
+    return (
+        use_real_data,
+        kpis,
+        closure_by_bu,
+        flow,
+        err_summary,
+        audit_list,
+        global_sent,
+        rejected,
+        sla_list,
+        quality_list,
+    )
 
 
 # -----------------------------------------------------------------------------
@@ -171,7 +206,19 @@ def main():
         st.markdown("---")
         st.caption("Getnet Financial Closure · Data from backend (UC or mock)")
 
-    backend, use_real_data = get_backend(catalog, schema, period or None)
+    with st.spinner("Loading closure data..."):
+        (
+            use_real_data,
+            kpis,
+            closure_by_bu,
+            flow,
+            err_summary,
+            audit_list,
+            global_sent,
+            rejected,
+            sla_list,
+            quality_list,
+        ) = _load_closure_data(catalog.strip(), schema.strip(), period.strip())
 
     # Title
     st.markdown('<p class="main-title">Getnet Financial Closure</p>', unsafe_allow_html=True)
@@ -187,7 +234,6 @@ def main():
         )
 
     # KPIs from backend (Pydantic)
-    kpis = backend.get_kpis()
     col1, col2, col3, col4, col5 = st.columns(5)
     with col1:
         st.markdown(
@@ -217,7 +263,6 @@ def main():
 
     # Document flow (new component)
     st.markdown('<p class="section-title">Document flow</p>', unsafe_allow_html=True)
-    flow = backend.get_document_flow()
     stages_html = []
     for i, s in enumerate(flow.stages):
         color = "var(--valid)" if s.stage == "valid" else ("var(--rejected)" if s.stage in ("rejected", "moved_to_review") else "var(--accent)")
@@ -234,7 +279,6 @@ def main():
 
     # Closure by business unit
     st.markdown('<p class="section-title">Closure by business unit</p>', unsafe_allow_html=True)
-    closure_by_bu = backend.get_closure_by_bu()
     if closure_by_bu:
         df_bu = _models_to_dataframe(
             closure_by_bu,
@@ -273,7 +317,6 @@ def main():
 
     # Error analysis (new component)
     st.markdown('<p class="section-title">Error analysis (validation failures)</p>', unsafe_allow_html=True)
-    err_summary = backend.get_error_analysis()
     if err_summary.by_field_and_cause:
         df_err = _models_to_dataframe(
             err_summary.by_field_and_cause,
@@ -287,8 +330,6 @@ def main():
 
     # Closure health (SLA + quality)
     st.markdown('<p class="section-title">Closure health</p>', unsafe_allow_html=True)
-    sla_list = backend.get_sla_metrics()
-    quality_list = backend.get_quality_summary()
     if sla_list:
         df_sla = _models_to_dataframe(
             sla_list,
@@ -305,7 +346,6 @@ def main():
 
     # Validation status by business unit
     st.markdown('<p class="section-title">Validation status by business unit</p>', unsafe_allow_html=True)
-    audit_list = backend.get_audit_status_by_bu()
     if audit_list:
         df_audit = _models_to_dataframe(
             audit_list,
@@ -318,7 +358,6 @@ def main():
 
     # Global financial closure sent
     st.markdown('<p class="section-title">Global financial closure sent</p>', unsafe_allow_html=True)
-    global_sent = backend.get_global_closure_sent()
     if global_sent:
         df_global = _models_to_dataframe(
             global_sent,
@@ -331,7 +370,6 @@ def main():
 
     # Rejected files
     st.markdown('<p class="section-title">Rejected files (need review)</p>', unsafe_allow_html=True)
-    rejected = backend.get_rejected_files()
     if rejected:
         df_rej = _models_to_dataframe(
             rejected,

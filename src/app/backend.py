@@ -95,6 +95,22 @@ def _safe_str(v: Any) -> str:
     return str(v).strip() if v is not None else ""
 
 
+def _safe_identifier(value: str, default: str, pattern: str = r"^[a-zA-Z0-9_]+$") -> str:
+    """Return value if it matches pattern (safe for SQL identifiers), else default."""
+    if not value or not value.strip():
+        return default
+    import re
+    return value.strip() if re.match(pattern, value.strip()) else default
+
+
+def _safe_period(value: Optional[str]) -> str:
+    """Return period if it matches yyyy-MM, else empty string."""
+    if not value or not value.strip():
+        return ""
+    import re
+    return value.strip() if re.match(r"^\d{4}-\d{2}$", value.strip()) else ""
+
+
 def _safe_ts(v: Any) -> Optional[datetime]:
     if v is None:
         return None
@@ -293,45 +309,51 @@ class DatabricksBackend(ClosureBackend):
         )
 
     def get_sla_metrics(self) -> list[ClosureSlaRow]:
-        period_filter = f"AND period = '{self.period}'" if self.period else ""
-        df = self._run_sql(f"""
-            SELECT period, business_unit, first_file_at, first_valid_at, hours_to_valid, files_rejected, files_valid
-            FROM {self.full_schema}.closure_sla_metrics
-            WHERE 1=1 {period_filter}
-            ORDER BY period DESC, business_unit LIMIT 50
-        """)
-        out = []
-        for _, row in df.iterrows():
-            out.append(ClosureSlaRow(
-                period=_safe_str(row.get("period")),
-                business_unit=_safe_str(row.get("business_unit")),
-                first_file_at=_safe_ts(row.get("first_file_at")),
-                first_valid_at=_safe_ts(row.get("first_valid_at")),
-                hours_to_valid=_safe_float(row.get("hours_to_valid")) if row.get("hours_to_valid") is not None else None,
-                files_rejected=_safe_int(row.get("files_rejected")),
-                files_valid=_safe_int(row.get("files_valid")),
-            ))
-        return out
+        try:
+            period_filter = f"AND period = '{self.period}'" if self.period else ""
+            df = self._run_sql(f"""
+                SELECT period, business_unit, first_file_at, first_valid_at, hours_to_valid, files_rejected, files_valid
+                FROM {self.full_schema}.closure_sla_metrics
+                WHERE 1=1 {period_filter}
+                ORDER BY period DESC, business_unit LIMIT 50
+            """)
+            out = []
+            for _, row in df.iterrows():
+                out.append(ClosureSlaRow(
+                    period=_safe_str(row.get("period")),
+                    business_unit=_safe_str(row.get("business_unit")),
+                    first_file_at=_safe_ts(row.get("first_file_at")),
+                    first_valid_at=_safe_ts(row.get("first_valid_at")),
+                    hours_to_valid=_safe_float(row.get("hours_to_valid")) if row.get("hours_to_valid") is not None else None,
+                    files_rejected=_safe_int(row.get("files_rejected")),
+                    files_valid=_safe_int(row.get("files_valid")),
+                ))
+            return out
+        except Exception:
+            return []
 
     def get_quality_summary(self) -> list[ClosureQualitySummary]:
-        period_filter = f"AND period = '{self.period}'" if self.period else ""
-        df = self._run_sql(f"""
-            SELECT period, total_files, pct_valid, pct_rejected, most_common_error_types, updated_at
-            FROM {self.full_schema}.closure_quality_summary
-            WHERE 1=1 {period_filter}
-            ORDER BY period DESC LIMIT 12
-        """)
-        out = []
-        for _, row in df.iterrows():
-            out.append(ClosureQualitySummary(
-                period=_safe_str(row.get("period")),
-                total_files=_safe_int(row.get("total_files")),
-                pct_valid=_safe_float(row.get("pct_valid")),
-                pct_rejected=_safe_float(row.get("pct_rejected")),
-                most_common_error_types=_safe_str(row.get("most_common_error_types")) or None,
-                updated_at=_safe_ts(row.get("updated_at")),
-            ))
-        return out
+        try:
+            period_filter = f"AND period = '{self.period}'" if self.period else ""
+            df = self._run_sql(f"""
+                SELECT period, total_files, pct_valid, pct_rejected, most_common_error_types, updated_at
+                FROM {self.full_schema}.closure_quality_summary
+                WHERE 1=1 {period_filter}
+                ORDER BY period DESC LIMIT 12
+            """)
+            out = []
+            for _, row in df.iterrows():
+                out.append(ClosureQualitySummary(
+                    period=_safe_str(row.get("period")),
+                    total_files=_safe_int(row.get("total_files")),
+                    pct_valid=_safe_float(row.get("pct_valid")),
+                    pct_rejected=_safe_float(row.get("pct_rejected")),
+                    most_common_error_types=_safe_str(row.get("most_common_error_types")) or None,
+                    updated_at=_safe_ts(row.get("updated_at")),
+                ))
+            return out
+        except Exception:
+            return []
 
 
 def _mock_kpis() -> ClosureKPIs:
@@ -445,7 +467,11 @@ def get_backend(catalog: str, schema: str, period: Optional[str] = None) -> tupl
     """
     Return (backend, use_real_data).
     use_real_data is False when using mock (no Spark or backend unavailable).
+    Sanitizes catalog, schema, and period for safe SQL use.
     """
+    catalog = _safe_identifier(catalog, "getnet_closure_dev")
+    schema = _safe_identifier(schema, "financial_closure")
+    period = _safe_period(period)
     spark = None
     try:
         from pyspark.sql import SparkSession

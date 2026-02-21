@@ -21,6 +21,8 @@ Databricks Asset Bundle that automates the Getnet financial closure process: ing
 
 **Enrichment & automation** — See **[docs/ENRICHMENT_AND_AUTOMATION_ROADMAP.md](docs/ENRICHMENT_AND_AUTOMATION_ROADMAP.md)** for insights and automation ideas. For the **full workflow** (BU drops files → reviewer reviews → wrong files to BU → correction → reviewer approval → orchestrator creates global report → notify global team), see **[docs/WORKFLOW_ENRICHMENT_AND_AUTOMATION.md](docs/WORKFLOW_ENRICHMENT_AND_AUTOMATION.md)** for role-based enrichments, Databricks insights by actor, and how to automate most steps (notify BU on rejection, notify global team on send, approval state, guardrails).
 
+**Testing** — See **[docs/TESTING.md](docs/TESTING.md)** for local validation, deployed app checks, end-to-end flow, and a value/insights checklist.
+
 ---
 
 ## Prerequisites
@@ -108,6 +110,8 @@ Bundle variables (e.g. in `databricks.yml` targets): `catalog`, `schema`, `volum
 **Re-ingestion**: When BUs fix and re-upload files, the same file path (rejected before) is re-validated; if valid, the audit row is updated and data is loaded to `closure_data` (closed loop).
 
 **Chaining**: Use **`closure_pipeline`** for a single schedule, or trigger `validate_and_load` after `ingest_sharepoint` (job dependency or schedule offset).
+
+**Duplicate jobs**: If the workspace shows duplicate job names (e.g. from multiple deploys), run **`python scripts/deduplicate_bundle_jobs.py`** to remove duplicates and keep the latest version of each job. Use **`--dry-run`** to preview; use **`--profile <profile>`** if your CLI uses a non-default profile.
 
 ---
 
