@@ -3,7 +3,8 @@
 ## Contents
 
 - **closure_excel/** — Sample Excel files that match `config/closure_schema.yaml`:
-  - `closure_bu_a_202502.xlsx`, `closure_bu_b_202502.xlsx`, `closure_bu_c_202502.xlsx`
+  - **`getnet_closure_test_202502.xlsx`** — Single file for a quick test (BU_A, 5 rows). **Download this file** to test the solution.
+  - `closure_bu_a_202502.xlsx`, `closure_bu_b_202502.xlsx`, `closure_bu_c_202502.xlsx` — One per BU for full e2e (all 3 BUs).
   - Columns: amount, currency, account_code, description, value_date, business_unit
   - All rows are valid (amount > 0, date format yyyy-MM-dd, required fields set).
 

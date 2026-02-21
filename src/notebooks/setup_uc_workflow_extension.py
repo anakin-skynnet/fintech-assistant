@@ -57,3 +57,23 @@ USING DELTA
 COMMENT 'Log of who received the global closure (Financial Lead + global team)'
 """).collect()
 print("global_closure_recipients table ready.")
+
+# COMMAND ----------
+
+# Run execution counter (prefix for job/pipeline output file names)
+spark.sql(f"""
+CREATE TABLE IF NOT EXISTS {full_schema}.closure_run_counter (
+  job_key STRING NOT NULL,
+  run_number BIGINT NOT NULL,
+  updated_at TIMESTAMP
+)
+USING DELTA
+COMMENT 'Execution count per job/pipeline; prefix in output file names'
+""").collect()
+for key in ["global_closure_send", "closure_pipeline"]:
+    if spark.sql(f"SELECT 1 FROM {full_schema}.closure_run_counter WHERE job_key = '{key}'").count() == 0:
+        spark.sql(f"""
+          INSERT INTO {full_schema}.closure_run_counter (job_key, run_number, updated_at)
+          VALUES ('{key}', 0, current_timestamp())
+        """).collect()
+print("closure_run_counter ready.")

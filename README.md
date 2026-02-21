@@ -23,6 +23,8 @@ Databricks Asset Bundle that automates the Getnet financial closure process: ing
 
 **Testing** — See **[docs/TESTING.md](docs/TESTING.md)** for local validation, deployed app checks, end-to-end flow, and a value/insights checklist.
 
+**Get started** — See **[docs/GET_STARTED_RUNBOOK.md](docs/GET_STARTED_RUNBOOK.md)** for the **order of jobs to execute**, step-by-step setup (deploy → UC setup → upload test files → run jobs), and a minimal test without SharePoint/email.
+
 ---
 
 ## Prerequisites
@@ -103,7 +105,7 @@ Bundle variables (e.g. in `databricks.yml` targets): `catalog`, `schema`, `volum
 | `ingest_sharepoint` | Hourly | Download new files from SharePoint BU folder to volume. |
 | `validate_and_load` | After ingest (chain or schedule) | Validate files (including **re-ingestion** of rejected files: re-validate and update audit / load if now valid); write audit; load valid rows to `closure_data`. |
 | `reject_to_sharepoint` | Daily 06:00 UTC | Upload rejected files to SharePoint review folder; set `moved_to_review_at`. |
-| `global_closure_send` | Daily 08:00 UTC | If all BUs valid for the period, aggregate, write global file, send via Outlook (with optional **LLM executive summary** in body), log in `global_closure_sent`. |
+| `global_closure_send` | Daily 08:00 UTC | If all BUs valid for the period, aggregate, write global file (with **execution number prefix**, e.g. `003_global_closure_2025-02.csv`), send via Outlook (with optional **LLM executive summary** in body), log in `global_closure_sent`. |
 | `closure_anomaly_detection` | Daily 09:00 UTC | Compare current vs prior period; write `closure_anomalies` for variance above threshold. |
 | `closure_sla_quality` | Daily 07:30 UTC | Compute `closure_sla_metrics` and `closure_quality_summary` for closure health. |
 

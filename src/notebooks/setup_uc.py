@@ -140,6 +140,30 @@ COMMENT 'Log of global closure file sent to Financial Lead per period'
 # COMMAND ----------
 
 # MAGIC %md
+# MAGIC ## Run execution counter (prefix for job/pipeline runs)
+
+# COMMAND ----------
+
+spark.sql(f"""
+CREATE TABLE IF NOT EXISTS {full_schema}.closure_run_counter (
+  job_key STRING NOT NULL,
+  run_number BIGINT NOT NULL,
+  updated_at TIMESTAMP
+)
+USING DELTA
+COMMENT 'Execution count per job/pipeline; used as numeric prefix in output file names'
+""").collect()
+# Seed initial counter for global_closure_send (and optionally closure_pipeline)
+for key in ["global_closure_send", "closure_pipeline"]:
+    if spark.sql(f"SELECT 1 FROM {full_schema}.closure_run_counter WHERE job_key = '{key}'").count() == 0:
+        spark.sql(f"""
+          INSERT INTO {full_schema}.closure_run_counter (job_key, run_number, updated_at)
+          VALUES ('{key}', 0, current_timestamp())
+        """).collect()
+
+# COMMAND ----------
+
+# MAGIC %md
 # MAGIC ## Closure anomalies (for anomaly detection job)
 
 # COMMAND ----------
@@ -196,4 +220,4 @@ COMMENT 'Quality summary per period; most_common_error_types is JSON or comma-se
 
 # MAGIC %md
 # MAGIC ## Done
-# MAGIC Schema, volumes, audit, closure, audit_errors view, global_closure_sent, closure_anomalies, closure_sla_metrics, closure_quality_summary are ready.
+# MAGIC Schema, volumes, audit, closure, audit_errors view, global_closure_sent, closure_run_counter, closure_anomalies, closure_sla_metrics, closure_quality_summary are ready.

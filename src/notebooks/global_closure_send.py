@@ -16,6 +16,7 @@ dbutils.widgets.text("schema", "financial_closure", "Schema")
 dbutils.widgets.text("closure_period_type", "monthly", "Closure period type")
 dbutils.widgets.text("secret_scope_sharepoint", "getnet-sharepoint", "Secret scope (SharePoint/Graph)")
 dbutils.widgets.text("secret_scope_outlook", "getnet-outlook", "Secret scope (Outlook - optional, can same as SharePoint)")
+dbutils.widgets.text("run_prefix_job_key", "global_closure_send", "Job key for run counter prefix (e.g. global_closure_send or closure_pipeline)")
 
 # COMMAND ----------
 
@@ -27,6 +28,7 @@ closure_table = f"{full_schema}.closure_data"
 global_sent_table = f"{full_schema}.global_closure_sent"
 scope_sp = dbutils.widgets.get("secret_scope_sharepoint")
 scope_outlook = dbutils.widgets.get("secret_scope_outlook")
+run_prefix_job_key = dbutils.widgets.get("run_prefix_job_key").strip() or "global_closure_send"
 
 # Current closure period (e.g. 2025-02)
 period = datetime.utcnow().strftime("%Y-%m")
@@ -73,12 +75,30 @@ pdf = df.toPandas()
 
 # COMMAND ----------
 
-# Write global file (Excel or CSV) to global_closure_output volume
+# Get next execution number (prefix) from closure_run_counter
+counter_table = f"{full_schema}.closure_run_counter"
+run_number = 1
+try:
+    spark.sql(f"""
+      UPDATE {counter_table}
+      SET run_number = run_number + 1, updated_at = current_timestamp()
+      WHERE job_key = '{run_prefix_job_key}'
+    """)
+    row = spark.sql(f"SELECT run_number FROM {counter_table} WHERE job_key = '{run_prefix_job_key}'").first()
+    if row is not None:
+        run_number = int(row.run_number)
+except Exception as e:
+    print(f"Run counter read failed, using run_number=1: {e}")
+
+# COMMAND ----------
+
+# Write global file (Excel or CSV) to global_closure_output volume; prefix = execution number
 out_volume = "global_closure_output"
 out_dir = f"/Volumes/{catalog}/{schema}/{out_volume}"
-out_name = f"global_closure_{period}.csv"
+out_name = f"{run_number:03d}_global_closure_{period}.csv"
 out_path = f"{out_dir}/{out_name}"
 dbutils.fs.mkdirs(out_dir)
+print(f"Execution #{run_number} — writing {out_name}")
 
 # Write to local temp then copy to volume
 import tempfile

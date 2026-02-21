@@ -101,6 +101,7 @@ resources:
               catalog: ${var.catalog}
               schema: ${var.schema}
               closure_period_type: ${var.closure_period_type}
+              run_prefix_job_key: "closure_pipeline"
           libraries:
             - pypi:
                 package: msal
