@@ -2,7 +2,7 @@
 # MAGIC %md
 # MAGIC # Unity Catalog setup for Getnet Financial Closure
 # MAGIC Run once per environment to create schema, volume, audit table, closure table, and audit_errors view.
-# MAGIC Requires: catalog must already exist and current user has CREATE SCHEMA, CREATE VOLUME, CREATE TABLE.
+# MAGIC Requires: **catalog must already exist** (create it in Data Explorer if needed); current user needs USE CATALOG, CREATE SCHEMA, CREATE VOLUME, CREATE TABLE.
 
 # COMMAND ----------
 
@@ -25,7 +25,10 @@ full_schema = f"{catalog}.{schema_name}"
 
 # COMMAND ----------
 
-spark.sql(f"CREATE SCHEMA IF NOT EXISTS {full_schema} COMMENT 'Getnet financial closure - audit, closure data, and volumes'").collect()
+# Use catalog first, then create schema by name only (avoids "database name is not valid" in some UC runtimes)
+spark.sql(f"USE CATALOG `{catalog}`")
+spark.sql(f"CREATE SCHEMA IF NOT EXISTS `{schema_name}` COMMENT 'Getnet financial closure - audit, closure data, and volumes'").collect()
+spark.sql(f"USE SCHEMA `{schema_name}`")
 
 # COMMAND ----------
 
