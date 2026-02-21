@@ -52,6 +52,8 @@ This creates:
 - View: `closure_audit_errors`
 - Table: `closure_run_counter` (execution count per job; used as numeric prefix in global closure output file names, e.g. `001_global_closure_2025-02.csv`)
 
+**If you see** `CatalogNotFoundException` or **"plugin class not found: spark.sql.catalog.getnet_closure_dev is not defined"**: the catalog does not exist or the cluster is not Unity Catalog–enabled. The notebook will try to create the catalog if you have **CREATE CATALOG** on the metastore. Otherwise: (1) Create the catalog manually: **Data** → **Catalogs** → **Create catalog** (e.g. `getnet_closure_dev`); (2) Ensure the job runs on a **Unity Catalog–enabled** cluster (default when the workspace has a UC metastore).
+
 **Optional (workflow extension):** Run the **setup_uc_workflow_extension** notebook once to add reviewer/approval columns and `global_closure_recipients` table. If you don’t have that job, run the notebook `src/notebooks/setup_uc_workflow_extension.py` manually with the same catalog/schema.
 
 ### Step 4 — Put test Excel files in the volume

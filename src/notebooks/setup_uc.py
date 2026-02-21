@@ -2,7 +2,7 @@
 # MAGIC %md
 # MAGIC # Unity Catalog setup for Getnet Financial Closure
 # MAGIC Run once per environment to create schema, volume, audit table, closure table, and audit_errors view.
-# MAGIC Requires: **catalog must already exist** (create it in Data Explorer if needed); current user needs USE CATALOG, CREATE SCHEMA, CREATE VOLUME, CREATE TABLE.
+# MAGIC If the catalog does not exist, the notebook will try **CREATE CATALOG IF NOT EXISTS** (requires CREATE CATALOG on the metastore). Otherwise create the catalog in **Data → Catalogs → Create catalog**. The job must run on a **Unity Catalog–enabled** cluster. You need USE CATALOG, CREATE SCHEMA, CREATE VOLUME, CREATE TABLE.
 
 # COMMAND ----------
 
@@ -21,12 +21,31 @@ full_schema = f"{catalog}.{schema_name}"
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## Create schema and volume
+# MAGIC ## Ensure catalog exists (create if allowed), then create schema and volume
 
 # COMMAND ----------
 
-# Use catalog first, then create schema by name only (avoids "database name is not valid" in some UC runtimes)
-spark.sql(f"USE CATALOG `{catalog}`")
+# Try to use catalog; if it doesn't exist, try to create it (requires CREATE CATALOG on metastore)
+try:
+    spark.sql(f"USE CATALOG `{catalog}`")
+except Exception as e:
+    err_msg = str(e).lower()
+    if "catalognotfound" in err_msg or "plugin class not found" in err_msg or "is not defined" in err_msg:
+        try:
+            spark.sql(f"CREATE CATALOG IF NOT EXISTS `{catalog}` COMMENT 'Getnet financial closure - dev'")
+            spark.sql(f"USE CATALOG `{catalog}`")
+        except Exception as e2:
+            raise RuntimeError(
+                f"Catalog '{catalog}' not found and could not create it ({e2}). "
+                "Create the catalog first: Data → Catalogs → Create catalog (name: getnet_closure_dev), "
+                "or ask your admin. Also ensure this job runs on a Unity Catalog–enabled cluster."
+            ) from e2
+    else:
+        raise
+
+# COMMAND ----------
+
+# Create schema by name only (avoids "database name is not valid" in some UC runtimes)
 spark.sql(f"CREATE SCHEMA IF NOT EXISTS `{schema_name}` COMMENT 'Getnet financial closure - audit, closure data, and volumes'").collect()
 spark.sql(f"USE SCHEMA `{schema_name}`")
 
