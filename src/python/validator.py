@@ -1,6 +1,8 @@
 """
 Config-driven validation for closure Excel files.
-Returns list of errors: {row, field, value, invalid_cause}; if any error, file is rejected.
+Each file is audited as a unit: if any row or value is missing or wrong, the whole file
+is considered invalid. Returns list of errors: {row, field, value, invalid_cause};
+non-empty list => file rejected; no rows from that file are loaded.
 """
 import json
 from typing import Any, Dict, List, Optional

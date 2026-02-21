@@ -9,9 +9,9 @@ Databricks Asset Bundle that automates the Getnet financial closure process: ing
 ## Architecture (summary)
 
 1. **Job 1 (Ingest)** — Lists the SharePoint BU folder, downloads new Excel (and attachments) to a UC volume.
-2. **Job 2 (Validate and load)** — Validates each file; writes one audit row per file with `validation_errors_summary` (row, field, value, invalid_cause). Valid files are appended to the closure Delta table.
+2. **Job 2 (Validate and load)** — **File-level audit**: each Excel is a unit; if any row or value is wrong or missing, the **whole file** is flagged invalid (date + reason persisted), and only **perfect** files are loaded. One audit row per file with `validation_status` (valid/rejected), `rejection_reason`, `validation_errors_summary`, `processed_at`. See **[docs/FILE_LEVEL_AUDIT.md](docs/FILE_LEVEL_AUDIT.md)**.
 3. **Job 3 (Reject to SharePoint)** — Moves rejected files (and attachments) to the SharePoint “review” folder and sets `moved_to_review_at`.
-4. **Job 4 (Global closure)** — When all expected BUs have valid files for the period, aggregates closure data, writes the global file, sends it via Outlook to the Financial Lead, and logs in `global_closure_sent`.
+4. **Job 4 (Global closure)** — When all expected BUs have valid (and optionally reviewer-approved) files for the period, aggregates closure data, writes the global file, sends it via Outlook to the **Financial Lead** and **global team** (from `config/closure_roles.yaml` or secret), and logs in `global_closure_sent` and `global_closure_recipients`.
 
 **Genie** — Two spaces: (1) Financial/global view over audit and closure tables; (2) **BU-facing Genie** where business units can talk with the data, check rejected files, and see the summary of wrong fields (use view `closure_audit_errors`).
 
@@ -19,7 +19,7 @@ Databricks Asset Bundle that automates the Getnet financial closure process: ing
 
 **Databricks App** — A **Streamlit app** (**getnet-financial-closure**) presents the same information to end-users in a polished UI.
 
-**Enrichment & automation** — See **[docs/ENRICHMENT_AND_AUTOMATION_ROADMAP.md](docs/ENRICHMENT_AND_AUTOMATION_ROADMAP.md)** for insights and automation ideas. For the **full workflow** (BU drops files → reviewer reviews → wrong files to BU → correction → reviewer approval → orchestrator creates global report → notify global team), see **[docs/WORKFLOW_ENRICHMENT_AND_AUTOMATION.md](docs/WORKFLOW_ENRICHMENT_AND_AUTOMATION.md)** for role-based enrichments, Databricks insights by actor, and how to automate most steps (notify BU on rejection, notify global team on send, approval state, guardrails).
+**Enrichment & automation** — **[docs/REDESIGN_AND_ENRICHMENT.md](docs/REDESIGN_AND_ENRICHMENT.md)** summarizes the **full workflow** (BU drops in SharePoint → reviewer reviews → wrong files to BU → correction → approval → orchestrator creates global report → notify global team), **what was redone** (approval gate, global-team notification, recipients log), **how to enrich** in Databricks (insights, intelligence), and **how to automate** to avoid human intervention. See also **[docs/WORKFLOW_ENRICHMENT_AND_AUTOMATION.md](docs/WORKFLOW_ENRICHMENT_AND_AUTOMATION.md)** and **[docs/ENRICHMENT_AND_AUTOMATION_ROADMAP.md](docs/ENRICHMENT_AND_AUTOMATION_ROADMAP.md)** for detailed roadmaps.
 
 **Testing** — See **[docs/TESTING.md](docs/TESTING.md)** for local validation, deployed app checks, end-to-end flow, and a value/insights checklist.
 
@@ -56,6 +56,7 @@ Create secret scopes and store the following (do not commit secrets).
 | Key | Description |
 |-----|-------------|
 | `financial_lead_email` | Email address of the Financial Lead |
+| `global_team_emails` | (Optional) Comma-separated emails for global team notification when global closure is sent (overrides `config/closure_roles.yaml` when set) |
 | (Optional) Same `tenant_id`, `client_id`, `client_secret` if using same app for send |
 
 For **sending email**, the app needs **Mail.Send** (application permission) or the job must use a user context with send-as. If using a shared mailbox, configure the app to send as that user as per your tenant setup.
@@ -179,6 +180,31 @@ Use **`src/notebooks/notify_closure_status.py`** to send email via Graph API. Pa
 - **Sample files** — In **`samples/closure_excel/`** you find `closure_bu_a_202502.xlsx`, `closure_bu_b_202502.xlsx`, `closure_bu_c_202502.xlsx` (valid rows matching `config/closure_schema.yaml`). See **`samples/README.md`**.
 - **Regenerate** — Run `python scripts/generate_sample_closure_excel.py` (requires `pandas`, `openpyxl`). Options: `--out-dir`, `--bus BU_A BU_B`, `--rows 10`, `--date 2025-02-15`.
 - **E2E without SharePoint** — Upload the three sample Excel files to the UC volume `{catalog}.{schema}.raw_closure_files/YYYY-MM-DD/`, then run `validate_and_load`. If all three are valid, run `global_closure_send` (ensure `financial_lead_email` secret is set). Or run the **`closure_pipeline`** job after uploading to the volume (if ingest is skipped or you upload directly to the volume).
+
+---
+
+## Databricks and related repos
+
+This solution runs on **Databricks** (Unity Catalog, Jobs, Apps, Volumes). Useful references from **Databricks Field Solutions**:
+
+- **[databricks-solutions](https://github.com/databricks-solutions)** — Curated implementations, demos, and best practices from Databricks field engineering ([overview](https://github.com/databricks-solutions)).
+- **[ai-dev-kit](https://github.com/databricks-solutions/ai-dev-kit)** — Toolkit for AI coding agents (Cursor, Claude, etc.): skills, MCP server, and tools for Databricks development.
+- **[databricks-apps-cookbook](https://github.com/databricks-solutions/databricks-apps-cookbook)** — Ready-to-use code snippets for building interactive Databricks Apps.
+- **[apx](https://github.com/databricks-solutions/apx)** — Toolkit for building Databricks Apps (Rust).
+
+To give your AI assistant (e.g. **Cursor**) Databricks skills and MCP tools, install the **AI Dev Kit** in this project. It provides:
+
+- **databricks-skills** — 19 markdown skills (Spark pipelines, Jobs, Unity Catalog, Genie, Apps, MLflow, etc.) so the assistant follows Databricks patterns.
+- **databricks-mcp-server** — 50+ MCP tools (run SQL, manage jobs, query catalogs, etc.) for executable actions inside the IDE.
+- **databricks-tools-core** — Python library for use in your own code (e.g. `execute_sql`, workspace APIs).
+
+**Install for Cursor (project scope, from this repo root):**
+
+```bash
+bash <(curl -sL https://raw.githubusercontent.com/databricks-solutions/ai-dev-kit/main/install.sh) --tools cursor
+```
+
+Then follow the prompts (e.g. choose DEFAULT or your Databricks CLI profile). After install, Cursor may need a reload or settings update so it picks up the new MCP server and skills. See the [AI Dev Kit README](https://github.com/databricks-solutions/ai-dev-kit) for global install, Visual Builder App, and options. Content under [databricks-solutions](https://github.com/databricks-solutions) is for reference and education; see each repo for license and support terms.
 
 ---
 

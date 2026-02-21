@@ -1,7 +1,7 @@
 # Databricks notebook source
 # MAGIC %md
 # MAGIC # Job 2: Validate and Load
-# MAGIC For each new file in the raw volume: validate all rows (all-or-nothing), write audit row with validation_errors_summary; if valid, append to closure_data Delta table.
+# MAGIC **File-level audit**: Each Excel file is treated as a single unit. If any row or value is missing or wrong, the **whole file** is flagged invalid, the audit row stores date and reason (errors detected), and the file is sent back to BUs (via Job 3). Only **perfect** files are marked valid and loaded into closure_data.
 
 # COMMAND ----------
 
@@ -130,14 +130,19 @@ for file_path in to_process:
         continue
     errors = validate_dataframe(pdf, columns_config, max_errors_per_file)
     if errors:
+        # Human-readable summary for BUs (first 5 errors + total)
+        err_lines = []
+        for e in errors[:5]:
+            err_lines.append(f"Row {e.get('row', '?')}: {e.get('field', '?')} — {e.get('invalid_cause', 'invalid')} (value: {str(e.get('value', ''))[:50]})")
+        rejection_explanation = ". ".join(err_lines) + (f" ({len(errors)} error(s) total)." if len(errors) > 5 else ".")
         audit_rows.append({
             "file_name": file_name,
             "file_path_in_volume": file_path,
             "business_unit": pdf["business_unit"].iloc[0] if "business_unit" in pdf.columns and len(pdf) else None,
             "validation_status": "rejected",
-            "rejection_reason": f"{len(errors)} validation error(s)",
+            "rejection_reason": f"{len(errors)} validation error(s) — whole file invalid",
             "validation_errors_summary": json.dumps(errors),
-            "rejection_explanation": None,
+            "rejection_explanation": rejection_explanation,
             "processed_at": now,
             "processed_by_job_run_id": run_id,
             "moved_to_review_at": None,

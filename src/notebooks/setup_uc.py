@@ -61,7 +61,7 @@ CREATE TABLE IF NOT EXISTS {full_schema}.closure_file_audit (
   updated_at TIMESTAMP NOT NULL
 )
 USING DELTA
-COMMENT 'One row per ingested file; validation_status valid|rejected; validation_errors_summary is JSON array of {row, field, value, invalid_cause}'
+COMMENT 'One row per Excel file (file as unit). validation_status valid|rejected; whole file invalid if any row/value fails. validation_errors_summary = JSON array of {row, field, value, invalid_cause}; processed_at = audit date; rejected files sent back to BUs via review folder.'
 """).collect()
 
 # COMMAND ----------

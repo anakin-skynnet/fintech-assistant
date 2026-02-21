@@ -1,12 +1,13 @@
 # Databricks notebook source
 # MAGIC %md
 # MAGIC # Job 4: Global Closure and Send
-# MAGIC When all expected BUs have valid files for the period: aggregate closure_data, write global file, send to Financial Lead via Outlook, log in global_closure_sent.
+# MAGIC When all expected BUs have valid (and optionally reviewer-approved) files for the period: aggregate closure_data, write global file, send to Financial Lead and global team via Outlook, log in global_closure_sent and global_closure_recipients.
 
 # COMMAND ----------
 
 import os
 import sys
+import json
 from datetime import datetime
 
 # COMMAND ----------
@@ -17,6 +18,9 @@ dbutils.widgets.text("closure_period_type", "monthly", "Closure period type")
 dbutils.widgets.text("secret_scope_sharepoint", "getnet-sharepoint", "Secret scope (SharePoint/Graph)")
 dbutils.widgets.text("secret_scope_outlook", "getnet-outlook", "Secret scope (Outlook - optional, can same as SharePoint)")
 dbutils.widgets.text("run_prefix_job_key", "global_closure_send", "Job key for run counter prefix (e.g. global_closure_send or closure_pipeline)")
+dbutils.widgets.dropdown("require_reviewer_approval", "false", ["true", "false"], "Require reviewer approval per BU (need approval_status column)")
+dbutils.widgets.text("closure_roles_path", "", "Optional: path to closure_roles.yaml for global_team (or use secret global_team_emails)")
+dbutils.widgets.text("global_team_emails", "", "Override: comma-separated global_team emails (overrides closure_roles_path/secret)")
 
 # COMMAND ----------
 
@@ -26,9 +30,11 @@ full_schema = f"{catalog}.{schema}"
 audit_table = f"{full_schema}.closure_file_audit"
 closure_table = f"{full_schema}.closure_data"
 global_sent_table = f"{full_schema}.global_closure_sent"
+recipients_table = f"{full_schema}.global_closure_recipients"
 scope_sp = dbutils.widgets.get("secret_scope_sharepoint")
 scope_outlook = dbutils.widgets.get("secret_scope_outlook")
 run_prefix_job_key = dbutils.widgets.get("run_prefix_job_key").strip() or "global_closure_send"
+require_reviewer_approval = dbutils.widgets.get("require_reviewer_approval") == "true"
 
 # Current closure period (e.g. 2025-02)
 period = datetime.utcnow().strftime("%Y-%m")
@@ -40,19 +46,36 @@ expected_bus = ["BU_A", "BU_B", "BU_C"]  # Override by loading config/business_u
 
 # COMMAND ----------
 
-# Check: all expected BUs have at least one valid file in this period?
-valid_per_bu = spark.sql(f"""
-SELECT business_unit, count(*) as cnt
-FROM {audit_table}
-WHERE validation_status = 'valid'
-  AND date_format(processed_at, 'yyyy-MM') = '{period}'
-GROUP BY business_unit
-""")
+# Check: all expected BUs have at least one valid file in this period
+# If require_reviewer_approval: also require at least one file per BU with approval_status = 'approved'
+audit_columns = [c.name for c in spark.table(audit_table).schema]
+has_approval = "approval_status" in audit_columns
+
+if require_reviewer_approval and not has_approval:
+    print("require_reviewer_approval is true but closure_file_audit has no approval_status column. Run setup_uc_workflow_extension. Using valid-only gate.")
+    require_reviewer_approval = False
+
+if require_reviewer_approval:
+    valid_per_bu = spark.sql(f"""
+    SELECT business_unit, count(*) as cnt
+    FROM {audit_table}
+    WHERE validation_status = 'valid'
+      AND date_format(processed_at, 'yyyy-MM') = '{period}'
+      AND approval_status = 'approved'
+    GROUP BY business_unit
+    """)
+else:
+    valid_per_bu = spark.sql(f"""
+    SELECT business_unit, count(*) as cnt
+    FROM {audit_table}
+    WHERE validation_status = 'valid'
+      AND date_format(processed_at, 'yyyy-MM') = '{period}'
+    GROUP BY business_unit
+    """)
 valid_bus = {row.business_unit for row in valid_per_bu.collect() if row.business_unit}
 missing = set(expected_bus) - valid_bus
-import json
 if missing:
-    print(f"Not all BUs valid. Missing: {missing}. Skip send.")
+    print(f"Not all BUs ready. Missing: {missing}. Skip send.")
     dbutils.notebook.exit(json.dumps({"sent": False, "reason": f"missing_bus_{list(missing)}"}))
 
 # COMMAND ----------
@@ -135,6 +158,33 @@ except Exception as e:
 
 # COMMAND ----------
 
+# Load global_team list: widget override > secret global_team_emails > closure_roles.yaml
+def load_global_team_emails():
+    w_emails = dbutils.widgets.get("global_team_emails").strip()
+    if w_emails:
+        return [e.strip() for e in w_emails.split(",") if e.strip()]
+    try:
+        raw = dbutils.secrets.get(scope=scope_outlook, key="global_team_emails")
+        return [e.strip() for e in raw.split(",") if e.strip()]
+    except Exception:
+        pass
+    roles_path = dbutils.widgets.get("closure_roles_path").strip()
+    if roles_path:
+        try:
+            path = roles_path.replace("/dbfs", "") if roles_path.startswith("/dbfs") else roles_path
+            with open(path, "r") as f:
+                import yaml
+                roles = yaml.safe_load(f)
+                gt = roles.get("global_team") or []
+                return [e.strip() for e in (gt if isinstance(gt, list) else [gt]) if e and str(e).strip()]
+        except Exception as e:
+            print(f"Could not load closure_roles from {roles_path}: {e}")
+    return []
+
+global_team_emails = load_global_team_emails()
+
+# COMMAND ----------
+
 # Send via Outlook
 financial_lead_email = dbutils.secrets.get(scope=scope_outlook, key="financial_lead_email")
 tenant_id = dbutils.secrets.get(scope=scope_sp, key="tenant_id")
@@ -156,20 +206,56 @@ send_mail_with_attachment(
 
 # COMMAND ----------
 
-# Log send
 try:
     run_id = dbutils.notebook.entry_point.getDbutils().notebook().getContext().currentRunId().get()
 except Exception:
     run_id = f"run-{datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
 now = datetime.utcnow()
-spark.createDataFrame([{
+
+# Log recipient (financial_lead)
+recipient_rows = [{"closure_period": period, "sent_at": now, "recipient_email": financial_lead_email, "recipient_role": "financial_lead", "job_run_id": run_id}]
+
+# Send to global team and log each
+for to_email in global_team_emails:
+    if not to_email or to_email == financial_lead_email:
+        continue
+    try:
+        send_mail_with_attachment(
+            token,
+            to_email=to_email,
+            subject=f"Getnet Global Financial Closure {period}",
+            body_text=body_text,
+            attachment_name=out_name,
+            attachment_content=content,
+        )
+        recipient_rows.append({"closure_period": period, "sent_at": now, "recipient_email": to_email, "recipient_role": "global_team", "job_run_id": run_id})
+    except Exception as e:
+        print(f"Failed to send to global_team {to_email}: {e}")
+
+# COMMAND ----------
+
+# Persist recipients log (if table exists)
+try:
+    spark.createDataFrame(recipient_rows).write.format("delta").mode("append").saveAsTable(recipients_table)
+except Exception as e:
+    if "TABLE_OR_VIEW_NOT_FOUND" not in str(e).upper():
+        print(f"Could not write global_closure_recipients: {e}")
+
+# COMMAND ----------
+
+# Log send in global_closure_sent (with global_team_notified_at when we notified global team)
+row = {
     "closure_period": period,
     "sent_at": now,
     "job_run_id": run_id,
     "recipient_email": financial_lead_email,
     "file_path": out_path,
-}]).write.format("delta").mode("append").saveAsTable(global_sent_table)
+}
+sent_cols = [c.name for c in spark.table(global_sent_table).schema]
+if global_team_emails and "global_team_notified_at" in sent_cols:
+    row["global_team_notified_at"] = now
+spark.createDataFrame([row]).write.format("delta").mode("append").saveAsTable(global_sent_table)
 
 # COMMAND ----------
 
-print(f"Global closure for {period} sent to {financial_lead_email}.")
+print(f"Global closure for {period} sent to {financial_lead_email}" + (f" and {len(global_team_emails)} global_team recipient(s)." if global_team_emails else "."))
