@@ -1,0 +1,17 @@
+# Roles for financial closure workflow: reviewer, orchestrator, global team
+# Used by notifications and (future) role-based app views / Genie spaces.
+
+# Reviewers: receive alerts when files need review or when BU re-uploaded after correction
+reviewers:
+  - "reviewer@getnet.com"
+
+# Orchestrator / supervisor: creates global report, approves send (optional)
+orchestrator: "orchestrator@getnet.com"
+
+# Financial Lead: receives global closure email (can also be set via secret financial_lead_email)
+financial_lead: "financial_lead@getnet.com"
+
+# Global team: receives final report when global closure is sent (distribution list or individuals)
+global_team:
+  - "global_team@getnet.com"
+  # - "compliance@getnet.com"

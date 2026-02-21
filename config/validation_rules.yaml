@@ -1,0 +1,23 @@
+# Validation rule definitions for closure files
+# Rule id is used as invalid_cause in validation_errors_summary
+
+rules:
+  not_null:
+    description: "Value must not be null or empty string"
+    invalid_cause: "not_null"
+  greater_than_zero:
+    description: "Numeric value must be > 0"
+    invalid_cause: "must be greater than zero"
+    applies_to: [ "amount", "quantity" ]
+  non_negative:
+    description: "Numeric value must be >= 0"
+    invalid_cause: "must be non-negative"
+  date_format:
+    description: "Value must be a valid date in expected format"
+    invalid_cause: "invalid date format"
+  positive_integer:
+    description: "Value must be a positive integer"
+    invalid_cause: "must be a positive integer"
+
+# Max number of errors to store per file (avoid huge JSON)
+max_errors_per_file: 100

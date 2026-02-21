@@ -1,0 +1,10 @@
+# Databricks App entrypoint
+# https://docs.databricks.com/en/dev-tools/databricks-apps/
+command:
+  - streamlit
+  - run
+  - app.py
+  - --server.port=8000
+  - --server.headless=true
+  - --server.enableCORS=false
+  - --browser.gatherUsageStats=false

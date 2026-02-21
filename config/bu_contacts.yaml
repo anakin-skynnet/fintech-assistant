@@ -1,0 +1,17 @@
+# BU contacts for notifications: send wrong files to BU, BU nudge when missing/rejected
+# Used by notify job and BU nudge job. Align with business_units.yaml.
+
+bu_contacts:
+  - business_unit: "BU_A"
+    email: "bu_a_contact@getnet.com"
+    name: "BU A Finance"
+  - business_unit: "BU_B"
+    email: "bu_b_contact@getnet.com"
+    name: "BU B Finance"
+  - business_unit: "BU_C"
+    email: "bu_c_contact@getnet.com"
+    name: "BU C Finance"
+
+# Optional: override for "sent to BU" vs "nudge" (e.g. different person)
+# nudge_email_override:
+#   BU_A: "bu_a_manager@getnet.com"

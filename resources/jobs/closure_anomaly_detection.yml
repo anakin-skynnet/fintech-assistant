@@ -1,0 +1,25 @@
+resources:
+  jobs:
+    closure_anomaly_detection:
+      name: "Getnet Closure - Anomaly Detection"
+      description: "Compares current vs prior period; writes closure_anomalies for variance above threshold."
+      tasks:
+        - task_key: anomaly
+          notebook_task:
+            notebook_path: ../../src/notebooks/closure_anomaly_detection.py
+            source: WORKSPACE
+            base_parameters:
+              catalog: ${var.catalog}
+              schema: ${var.schema}
+          new_cluster:
+            spark_version: "13.3.x-scala2.12"
+            node_type_id: "Standard_DS3_v2"
+            num_workers: 0
+            spark_conf:
+              spark.databricks.cluster.profile: singleNode
+              spark.master: local[*]
+            custom_tags:
+              ResourceClass: SingleNode
+      schedule:
+        quartz_cron_expression: "0 0 9 * * ?"  # daily 9 AM UTC
+        timezone_id: "UTC"

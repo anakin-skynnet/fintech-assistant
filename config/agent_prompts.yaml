@@ -1,0 +1,27 @@
+# Optional: LLM agent prompts for rejection explanation and global closure summary
+# Use with Databricks Foundation Models or external model endpoint.
+# Add tasks to Job 2 (after validation) and Job 4 (before/after send) to call these.
+
+rejection_explanation:
+  enabled: true
+  model: "databricks-meta-llama-3-1-70b-instruct"  # or your deployed endpoint
+  system: "You are a helpful assistant that explains data validation errors in plain language for business users."
+  user_template: |
+    The following validation errors were found in a financial closure file.
+    For each error, the row number, field name, invalid value, and rule are given.
+    Produce a short, bullet-point summary that a business user can use to fix the file.
+    Do not include technical jargon.
+
+    Errors (JSON):
+    {{validation_errors_summary}}
+
+global_closure_summary:
+  enabled: true
+  model: "databricks-meta-llama-3-1-70b-instruct"
+  system: "You are a financial analyst assistant. Summarize closure metrics in 3-5 bullet points for the Financial Lead."
+  user_template: |
+    Closure period: {{closure_period}}
+    Aggregated metrics (e.g. totals by BU, row counts):
+    {{metrics_summary}}
+
+    Produce a short executive summary to include in the email body or as an attachment.

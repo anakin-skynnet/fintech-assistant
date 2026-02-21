@@ -1,0 +1,17 @@
+# Expected business units for "all BUs valid" logic
+# Used by Job 4 to decide when to generate global closure.
+# Align with Santander Knowledge Base.
+
+# List of expected BU identifiers (e.g. from file name or column)
+expected_bus:
+  - "BU_A"
+  - "BU_B"
+  - "BU_C"
+
+# Optional: map file name pattern or folder to BU
+# file_pattern_to_bu:
+#   ".*_bu_a_.*": "BU_A"
+#   ".*_bu_b_.*": "BU_B"
+
+# Closure period type for filtering
+closure_period_type: monthly

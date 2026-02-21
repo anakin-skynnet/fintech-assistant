@@ -1,0 +1,25 @@
+# One-time UC setup: schema, volume, audit table, closure table, view
+# Run manually or once per environment
+resources:
+  jobs:
+    setup_uc:
+      name: "Getnet Closure - UC Setup"
+      description: "Create schema, volume, audit table, closure table, and audit_errors view. Run once per environment."
+      tasks:
+        - task_key: "setup"
+          notebook_task:
+            notebook_path: ../../src/notebooks/setup_uc.py
+            source: WORKSPACE
+            base_parameters:
+              catalog: ${var.catalog}
+              schema: ${var.schema}
+              volume_raw: ${var.volume_raw}
+          new_cluster:
+            spark_version: "13.3.x-scala2.12"
+            node_type_id: "Standard_DS3_v2"
+            num_workers: 0
+            spark_conf:
+              spark.databricks.cluster.profile: singleNode
+              spark.master: local[*]
+            custom_tags:
+              ResourceClass: SingleNode

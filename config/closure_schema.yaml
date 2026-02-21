@@ -1,0 +1,43 @@
+# Closure Excel schema and column definitions
+# Align with Santander Knowledge Base doc; extend columns as per actual closure template.
+# https://docs.google.com/document/d/1V0OhY8N9vRto4uPoROhOnAElZTRcfGkxKFy6dAkUkhY/edit
+
+columns:
+  - name: amount
+    type: double
+    validations:
+      - not_null
+      - greater_than_zero
+    description: "Numeric amount (must be > 0)"
+  - name: currency
+    type: string
+    validations:
+      - not_null
+    description: "Currency code"
+  - name: account_code
+    type: string
+    validations:
+      - not_null
+    description: "Account / ledger code"
+  - name: description
+    type: string
+    validations: []
+    description: "Line description"
+  - name: value_date
+    type: date
+    validations:
+      - not_null
+      - date_format
+    date_format: "yyyy-MM-dd"
+    description: "Value date"
+  - name: business_unit
+    type: string
+    validations:
+      - not_null
+    description: "Business unit identifier"
+
+# Optional: sheet name if Excel has multiple sheets
+sheet_name: null  # first sheet if null
+
+# Optional: header row (1-based)
+header_row: 1

@@ -1,0 +1,31 @@
+# Job 2: Validate files in volume, write audit + Delta (valid only)
+resources:
+  jobs:
+    validate_and_load:
+      name: "Getnet Closure - Validate and Load"
+      description: "Validate each file (all-or-nothing), write audit with error summary; load valid files to closure_data Delta table."
+      tasks:
+        - task_key: "validate"
+          notebook_task:
+            notebook_path: ../../src/notebooks/validate_and_load.py
+            source: WORKSPACE
+            base_parameters:
+              catalog: ${var.catalog}
+              schema: ${var.schema}
+              volume_raw: ${var.volume_raw}
+          libraries:
+            - pypi:
+                package: pandas
+            - pypi:
+                package: openpyxl
+            - pypi:
+                package: pyyaml
+          new_cluster:
+            spark_version: "13.3.x-scala2.12"
+            node_type_id: "Standard_DS3_v2"
+            num_workers: 0
+            spark_conf:
+              spark.databricks.cluster.profile: singleNode
+              spark.master: local[*]
+            custom_tags:
+              ResourceClass: SingleNode

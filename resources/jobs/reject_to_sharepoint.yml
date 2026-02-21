@@ -1,0 +1,32 @@
+# Job 3: Move rejected files to SharePoint review folder
+resources:
+  jobs:
+    reject_to_sharepoint:
+      name: "Getnet Closure - Move Rejected to SharePoint Review"
+      description: "Find rejected files not yet moved, upload to SharePoint review folder, update audit."
+      tasks:
+        - task_key: "move_rejected"
+          notebook_task:
+            notebook_path: ../../src/notebooks/reject_to_sharepoint.py
+            source: WORKSPACE
+            base_parameters:
+              catalog: ${var.catalog}
+              schema: ${var.schema}
+              volume_raw: ${var.volume_raw}
+          libraries:
+            - pypi:
+                package: msal
+            - pypi:
+                package: requests
+          new_cluster:
+            spark_version: "13.3.x-scala2.12"
+            node_type_id: "Standard_DS3_v2"
+            num_workers: 0
+            spark_conf:
+              spark.databricks.cluster.profile: singleNode
+              spark.master: local[*]
+            custom_tags:
+              ResourceClass: SingleNode
+      schedule:
+        quartz_cron_expression: "0 0 6 * * ?"  # daily 6 AM UTC
+        timezone_id: "UTC"

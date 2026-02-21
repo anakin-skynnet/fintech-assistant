@@ -1,0 +1,32 @@
+# Job 1: Ingest Excel files from SharePoint BU folder to UC volume
+resources:
+  jobs:
+    ingest_sharepoint:
+      name: "Getnet Closure - Ingest from SharePoint"
+      description: "List and download new files from SharePoint BU folder to raw_closure_files volume."
+      tasks:
+        - task_key: "ingest"
+          notebook_task:
+            notebook_path: ../../src/notebooks/ingest_sharepoint.py
+            source: WORKSPACE
+            base_parameters:
+              catalog: ${var.catalog}
+              schema: ${var.schema}
+              volume_raw: ${var.volume_raw}
+          libraries:
+            - pypi:
+                package: msal
+            - pypi:
+                package: requests
+          new_cluster:
+            spark_version: "13.3.x-scala2.12"
+            node_type_id: "Standard_DS3_v2"
+            num_workers: 0
+            spark_conf:
+              spark.databricks.cluster.profile: singleNode
+              spark.master: local[*]
+            custom_tags:
+              ResourceClass: SingleNode
+      schedule:
+        quartz_cron_expression: "0 0 * * * ?"  # hourly
+        timezone_id: "UTC"

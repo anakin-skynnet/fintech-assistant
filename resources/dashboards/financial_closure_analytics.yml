@@ -1,0 +1,8 @@
+# Dashboard: Financial closure analytics by business unit and global closure
+# Set var.warehouse_id in your target (or variable-overrides) to your SQL warehouse ID.
+resources:
+  dashboards:
+    financial_closure_analytics:
+      display_name: "Getnet Financial Closure Analytics"
+      file_path: ../../src/dashboards/financial_closure_analytics.lvdash.json
+      warehouse_id: ${var.warehouse_id}

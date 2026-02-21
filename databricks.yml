@@ -1,0 +1,84 @@
+# Getnet Financial Closure Automation - Databricks Asset Bundle
+# https://docs.databricks.com/dev-tools/bundles/index.html
+
+bundle:
+  name: getnet-financial-closure
+
+variables:
+  catalog:
+    description: "Unity Catalog name for closure data"
+    default: getnet_closure
+  schema:
+    description: "Schema (database) name"
+    default: financial_closure
+  volume_raw:
+    description: "Volume for raw ingested Excel files from SharePoint"
+    default: raw_closure_files
+  warehouse_id:
+    description: "SQL Warehouse ID for dashboards and Genie (required only when deploying the Lakeview dashboard)"
+    default: ""
+  sharepoint_site_id:
+    description: "SharePoint site ID for BU folder (or set in secrets)"
+    default: ""
+  sharepoint_drive_id:
+    description: "SharePoint drive (document library) ID (or set in secrets)"
+    default: ""
+  sharepoint_folder_path:
+    description: "Path to folder where BUs drop files (e.g. BU Closure)"
+    default: ""
+  sharepoint_review_folder_path:
+    description: "Path to review folder for rejected files (e.g. Review)"
+    default: ""
+  financial_lead_email:
+    description: "Email address of Financial Lead (or set in secrets)"
+    default: ""
+  closure_period_type:
+    description: "Closure period type (e.g. monthly)"
+    default: monthly
+
+# Workspace host is taken from the CLI profile (e.g. Azure: https://adb-<workspace-id>.<number>.azuredatabricks.net)
+# Do not set workspace.host here so deploy uses your profile's host.
+targets:
+  dev:
+    default: true
+    mode: development
+    variables:
+      catalog: getnet_closure_dev
+      schema: financial_closure
+      volume_raw: raw_closure_files
+    workspace:
+      root_path: /Users/${workspace.current_user.userName}/.bundle/${bundle.name}/dev
+
+  prod:
+    mode: production
+    variables:
+      catalog: getnet_closure
+      schema: financial_closure
+      volume_raw: raw_closure_files
+    workspace:
+      root_path: /Shared/.bundle/${bundle.name}/prod
+
+  # Azure Databricks targets — use profile with host https://adb-<id>.<n>.azuredatabricks.net
+  azure_dev:
+    mode: development
+    variables:
+      catalog: getnet_closure_dev
+      schema: financial_closure
+      volume_raw: raw_closure_files
+    workspace:
+      root_path: /Users/${workspace.current_user.userName}/.bundle/${bundle.name}/azure_dev
+
+  azure_prod:
+    mode: production
+    variables:
+      catalog: getnet_closure
+      schema: financial_closure
+      volume_raw: raw_closure_files
+    workspace:
+      root_path: /Shared/.bundle/${bundle.name}/prod
+
+include:
+  - resources/jobs/*.yml
+  - resources/apps/*.yml
+  # Uncomment and set var.warehouse_id to deploy the Lakeview dashboard:
+  # - resources/dashboards/*.yml

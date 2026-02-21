@@ -1,0 +1,157 @@
+{
+  "datasets": [
+    {
+      "name": "ds_closure_by_bu",
+      "displayName": "Closure by business unit",
+      "query": "SELECT business_unit, closure_period, COUNT(*) AS row_count, SUM(COALESCE(amount, 0)) AS total_amount FROM closure_data GROUP BY business_unit, closure_period ORDER BY closure_period DESC, total_amount DESC"
+    },
+    {
+      "name": "ds_audit_status",
+      "displayName": "File validation status by BU",
+      "query": "SELECT business_unit, validation_status, COUNT(*) AS file_count FROM closure_file_audit GROUP BY business_unit, validation_status ORDER BY business_unit, validation_status"
+    },
+    {
+      "name": "ds_global_sent",
+      "displayName": "Global closure sent",
+      "query": "SELECT closure_period, sent_at, recipient_email FROM global_closure_sent ORDER BY sent_at DESC LIMIT 24"
+    },
+    {
+      "name": "ds_amount_by_bu",
+      "displayName": "Total amount by business unit",
+      "query": "SELECT COALESCE(business_unit, 'Unknown') AS business_unit, SUM(COALESCE(amount, 0)) AS total_amount FROM closure_data GROUP BY business_unit ORDER BY total_amount DESC"
+    }
+  ],
+  "pages": [
+    {
+      "name": "page_main",
+      "displayName": "Financial closure overview",
+      "layout": [
+        {
+          "widget": {
+            "name": "title_widget",
+            "textbox_spec": "# Getnet Financial Closure Analytics\nBy business unit and global closure."
+          },
+          "position": { "x": 0, "y": 0, "width": 12, "height": 2 }
+        },
+        {
+          "widget": {
+            "name": "chart_amount_bu",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_amount_by_bu",
+                  "fields": [
+                    { "name": "business_unit", "expression": "`business_unit`" },
+                    { "name": "total_amount", "expression": "`total_amount`" }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "bar",
+              "encodings": {
+                "x": { "fieldName": "total_amount", "scale": { "type": "quantitative" }, "displayName": "Total amount" },
+                "y": { "fieldName": "business_unit", "scale": { "type": "categorical", "sort": { "by": "x-reversed" } }, "displayName": "Business unit" }
+              },
+              "frame": { "showTitle": true, "title": "Total amount by business unit" }
+            }
+          },
+          "position": { "x": 0, "y": 2, "width": 6, "height": 8 }
+        },
+        {
+          "widget": {
+            "name": "table_closure_bu",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_closure_by_bu",
+                  "fields": [
+                    { "name": "business_unit", "expression": "`business_unit`" },
+                    { "name": "closure_period", "expression": "`closure_period`" },
+                    { "name": "row_count", "expression": "`row_count`" },
+                    { "name": "total_amount", "expression": "`total_amount`" }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "table",
+              "frame": { "showTitle": true, "title": "Closure by business unit and period" }
+            }
+          },
+          "position": { "x": 6, "y": 2, "width": 6, "height": 8 }
+        },
+        {
+          "widget": {
+            "name": "title_audit",
+            "textbox_spec": "## Validation status by business unit"
+          },
+          "position": { "x": 0, "y": 10, "width": 6, "height": 1 }
+        },
+        {
+          "widget": {
+            "name": "table_audit",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_audit_status",
+                  "fields": [
+                    { "name": "business_unit", "expression": "`business_unit`" },
+                    { "name": "validation_status", "expression": "`validation_status`" },
+                    { "name": "file_count", "expression": "`file_count`" }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "table",
+              "frame": { "showTitle": true, "title": "Files valid vs rejected by BU" }
+            }
+          },
+          "position": { "x": 0, "y": 11, "width": 6, "height": 6 }
+        },
+        {
+          "widget": {
+            "name": "title_global",
+            "textbox_spec": "## Global financial closure sent"
+          },
+          "position": { "x": 6, "y": 10, "width": 6, "height": 1 }
+        },
+        {
+          "widget": {
+            "name": "table_global",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_global_sent",
+                  "fields": [
+                    { "name": "closure_period", "expression": "`closure_period`" },
+                    { "name": "sent_at", "expression": "`sent_at`" },
+                    { "name": "recipient_email", "expression": "`recipient_email`" }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "table",
+              "frame": { "showTitle": true, "title": "Global closure email log" }
+            }
+          },
+          "position": { "x": 6, "y": 11, "width": 6, "height": 6 }
+        }
+      ]
+    }
+  ]
+}

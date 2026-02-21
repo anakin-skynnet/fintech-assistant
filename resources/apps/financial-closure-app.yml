@@ -1,0 +1,8 @@
+# Databricks App: Getnet Financial Closure — present analytics to end-users
+# https://docs.databricks.com/en/dev-tools/databricks-apps/
+resources:
+  apps:
+    financial_closure_app:
+      name: getnet-financial-closure
+      description: "Financial closure analytics by business unit and global closure. View KPIs, closure by BU, validation status, global sent log, and rejected files."
+      source_code_path: ../../src/app
