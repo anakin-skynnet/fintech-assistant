@@ -67,6 +67,21 @@ class RejectedFile(BaseModel):
 
 
 # -----------------------------------------------------------------------------
+# All audit files (valid + invalid) for the audit table view
+# -----------------------------------------------------------------------------
+class AuditFileRow(BaseModel):
+    """One row from closure_file_audit: all files with status, errors, dates."""
+    file_name: str = ""
+    file_path_in_volume: str = ""
+    business_unit: Optional[str] = None
+    validation_status: str = Field(..., description="valid | rejected")
+    rejection_reason: Optional[str] = None
+    rejection_explanation: Optional[str] = None
+    processed_at: Optional[datetime] = None
+    moved_to_review_at: Optional[datetime] = None
+
+
+# -----------------------------------------------------------------------------
 # Document flow (pipeline stages)
 # -----------------------------------------------------------------------------
 class DocumentFlowStage(BaseModel):

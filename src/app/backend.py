@@ -6,6 +6,7 @@ All responses use Pydantic models from models.py.
 from __future__ import annotations
 
 import os
+import sys
 from abc import ABC, abstractmethod
 from datetime import datetime
 from typing import Any, Optional
@@ -13,6 +14,7 @@ from typing import Any, Optional
 import pandas as pd
 
 from models import (
+    AuditFileRow,
     AuditStatusByBU,
     ClosureByBU,
     ClosureKPIs,
@@ -76,6 +78,27 @@ class ClosureBackend(ABC):
     def get_quality_summary(self) -> list[ClosureQualitySummary]:
         ...
 
+    def get_all_audit_files(self) -> list[AuditFileRow]:
+        """All audit rows (valid + invalid) for the audit table in the app. Default: empty."""
+        return []
+
+    def get_file_bytes_from_volume(self, volume_path: str) -> tuple[bool, bytes | None, str]:
+        """Return (success, bytes_or_none, message). For download. Default: (False, None, msg)."""
+        return (False, None, "Download only available when the app runs on Databricks.")
+
+    def move_rejected_to_sharepoint(self, secret_scope: str = "getnet-sharepoint") -> tuple[int, str]:
+        """Move rejected files (not yet moved) to SharePoint review folder. Returns (count_moved, message)."""
+        return (0, "Only available when the app runs on Databricks with SharePoint secrets.")
+
+    def upload_file_to_volume(
+        self, volume_raw: str, file_bytes: bytes, filename: str
+    ) -> tuple[bool, str]:
+        """
+        Write uploaded file bytes to the raw closure volume (same as SharePoint ingest).
+        Returns (success, message). Override in DatabricksBackend; base returns (False, msg).
+        """
+        return (False, "Upload is only available when the app runs on Databricks with Spark.")
+
 
 def _safe_float(v: Any) -> float:
     try:
@@ -122,12 +145,185 @@ def _safe_ts(v: Any) -> Optional[datetime]:
         return None
 
 
+def _safe_filename(name: str) -> str:
+    """Return basename with only alphanumeric, underscore, hyphen, dot (avoid path traversal)."""
+    import re
+    base = os.path.basename(name).strip()
+    if not base:
+        return "upload.xlsx"
+    safe = re.sub(r"[^\w.\-]", "_", base)
+    return safe or "upload.xlsx"
+
+
+def _default_closure_schema() -> dict:
+    """Embedded schema for validation (align with config/closure_schema.yaml)."""
+    return {
+        "columns": [
+            {"name": "amount", "type": "double", "validations": ["not_null", "greater_than_zero"]},
+            {"name": "currency", "type": "string", "validations": ["not_null"]},
+            {"name": "account_code", "type": "string", "validations": ["not_null"]},
+            {"name": "description", "type": "string", "validations": []},
+            {"name": "value_date", "type": "date", "validations": ["not_null", "date_format"], "date_format": "yyyy-MM-dd"},
+            {"name": "business_unit", "type": "string", "validations": ["not_null"]},
+        ],
+        "sheet_name": None,
+        "header_row": 1,
+    }
+
+
 class DatabricksBackend(ClosureBackend):
     """Backend that runs Spark SQL against Unity Catalog closure tables."""
 
     def __init__(self, catalog: str, schema: str, period: Optional[str] = None, spark: Any = None):
         super().__init__(catalog, schema, period)
         self.spark = spark
+
+    def upload_file_to_volume(
+        self, volume_raw: str, file_bytes: bytes, filename: str
+    ) -> tuple[bool, str]:
+        """Write uploaded file to the raw closure volume (same path as SharePoint ingest)."""
+        import tempfile
+        try:
+            from pyspark.dbutils import DBUtils
+            dbutils = DBUtils(self.spark)
+        except Exception as e:
+            return (False, f"Could not get dbutils: {e}")
+        safe_name = _safe_filename(filename)
+        date_folder = datetime.utcnow().strftime("%Y-%m-%d")
+        volume_path = f"/Volumes/{self.catalog}/{self.schema}/{volume_raw.strip() or 'raw_closure_files'}/{date_folder}/{safe_name}"
+        tmp_path = None
+        try:
+            with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(safe_name)[1]) as tmp:
+                tmp.write(file_bytes)
+                tmp_path = tmp.name
+            dbutils.fs.cp(f"file:{tmp_path}", volume_path)
+        except Exception as e:
+            return (False, str(e))
+        finally:
+            if tmp_path and os.path.exists(tmp_path):
+                try:
+                    os.unlink(tmp_path)
+                except Exception:
+                    pass
+        # Trigger validation and update audit table (same as Validate and Load job)
+        ok_validate, msg_validate = self._validate_and_audit(volume_path, file_bytes, safe_name)
+        return (True, f"Saved to {volume_path}. {msg_validate}")
+
+    def _validate_and_audit(
+        self, volume_path: str, file_bytes: bytes, file_name: str
+    ) -> tuple[bool, str]:
+        """Run validation in memory (pandas + validator) for speed; no extra I/O beyond file bytes."""
+        """
+        Run validation on the file and update closure_file_audit (and closure_data if valid).
+        Returns (True, status_message) e.g. "Validated: valid" or "Validated: invalid — reason".
+        """
+        import json
+        import tempfile
+        try:
+            from pyspark.dbutils import DBUtils
+            dbutils = DBUtils(self.spark)
+        except Exception as e:
+            return (False, f"Validation skipped (dbutils): {e}")
+        # Ensure validator is on path
+        _python_dir = os.path.join(os.path.dirname(__file__), "..", "python")
+        if _python_dir not in sys.path:
+            sys.path.insert(0, _python_dir)
+        try:
+            from validator import validate_dataframe
+        except Exception as e:
+            return (False, f"Validation skipped (validator): {e}")
+        schema_config = _default_closure_schema()
+        columns_config = schema_config.get("columns", [])
+        max_errors_per_file = 100
+        now = datetime.utcnow()
+        audit_table = f"{self.full_schema}.closure_file_audit"
+        closure_table = f"{self.full_schema}.closure_data"
+        run_id = f"app-upload-{now.strftime('%Y%m%d%H%M%S')}"
+        try:
+            with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(file_name)[1]) as tmp:
+                tmp.write(file_bytes)
+                tmp_path = tmp.name
+            try:
+                pdf = pd.read_excel(tmp_path, sheet_name=0, header=0)
+            except Exception as e:
+                audit_row = {
+                    "file_name": file_name,
+                    "file_path_in_volume": volume_path,
+                    "business_unit": None,
+                    "validation_status": "rejected",
+                    "rejection_reason": str(e),
+                    "validation_errors_summary": json.dumps([{"row": 0, "field": "_", "value": "", "invalid_cause": "read_error"}]),
+                    "rejection_explanation": None,
+                    "processed_at": now,
+                    "processed_by_job_run_id": run_id,
+                    "moved_to_review_at": None,
+                    "attachment_paths": None,
+                    "created_at": now,
+                    "updated_at": now,
+                }
+                self.spark.createDataFrame([audit_row]).write.format("delta").mode("append").saveAsTable(audit_table)
+                return (True, f"Validated: invalid — read error. Audit updated.")
+            finally:
+                if os.path.exists(tmp_path):
+                    try:
+                        os.unlink(tmp_path)
+                    except Exception:
+                        pass
+            errors = validate_dataframe(pdf, columns_config, max_errors_per_file)
+            if errors:
+                err_lines = []
+                for e in errors[:5]:
+                    err_lines.append(f"Row {e.get('row', '?')}: {e.get('field', '?')} — {e.get('invalid_cause', 'invalid')} (value: {str(e.get('value', ''))[:50]})")
+                rejection_explanation = ". ".join(err_lines) + (f" ({len(errors)} error(s) total)." if len(errors) > 5 else ".")
+                audit_row = {
+                    "file_name": file_name,
+                    "file_path_in_volume": volume_path,
+                    "business_unit": pdf["business_unit"].iloc[0] if "business_unit" in pdf.columns and len(pdf) else None,
+                    "validation_status": "rejected",
+                    "rejection_reason": f"{len(errors)} validation error(s) — whole file invalid",
+                    "validation_errors_summary": json.dumps(errors),
+                    "rejection_explanation": rejection_explanation,
+                    "processed_at": now,
+                    "processed_by_job_run_id": run_id,
+                    "moved_to_review_at": None,
+                    "attachment_paths": None,
+                    "created_at": now,
+                    "updated_at": now,
+                }
+                self.spark.createDataFrame([audit_row]).write.format("delta").mode("append").saveAsTable(audit_table)
+                return (True, f"Validated: invalid — {rejection_explanation[:200]}... Audit updated.")
+            # Valid: write audit row and append to closure_data
+            audit_row = {
+                "file_name": file_name,
+                "file_path_in_volume": volume_path,
+                "business_unit": pdf["business_unit"].iloc[0] if "business_unit" in pdf.columns and len(pdf) else None,
+                "validation_status": "valid",
+                "rejection_reason": None,
+                "validation_errors_summary": None,
+                "rejection_explanation": None,
+                "processed_at": now,
+                "processed_by_job_run_id": run_id,
+                "moved_to_review_at": None,
+                "attachment_paths": None,
+                "created_at": now,
+                "updated_at": now,
+            }
+            self.spark.createDataFrame([audit_row]).write.format("delta").mode("append").saveAsTable(audit_table)
+            pdf["source_file_name"] = file_name
+            pdf["ingested_at"] = now
+            if "value_date" in pdf.columns:
+                pdf["value_date"] = pd.to_datetime(pdf["value_date"], errors="coerce")
+            cols = ["source_file_name", "closure_period", "business_unit", "row_index", "amount", "currency", "account_code", "description", "value_date", "ingested_at"]
+            for c in cols:
+                if c not in pdf.columns:
+                    pdf[c] = None
+            pdf["row_index"] = range(1, len(pdf) + 1)
+            pdf["closure_period"] = now.strftime("%Y-%m")
+            subset = [c for c in cols if c in pdf.columns]
+            self.spark.createDataFrame(pdf[subset]).write.format("delta").mode("append").saveAsTable(closure_table)
+            return (True, "Validated: valid. Audit and closure_data updated.")
+        except Exception as e:
+            return (False, f"Validation failed: {e}")
 
     def _run_sql(self, sql: str) -> pd.DataFrame:
         if self.spark is None:
@@ -246,6 +442,110 @@ class DatabricksBackend(ClosureBackend):
                 moved_to_review_at=_safe_ts(row.get("moved_to_review_at")),
             ))
         return out
+
+    def get_all_audit_files(self) -> list[AuditFileRow]:
+        """All audit rows (valid + invalid) for the selected period."""
+        df = self._run_sql(f"""
+            SELECT file_name, file_path_in_volume, business_unit, validation_status,
+                   rejection_reason, rejection_explanation, processed_at, moved_to_review_at
+            FROM {self.full_schema}.closure_file_audit
+            WHERE 1=1 {self.audit_period_clause}
+            ORDER BY processed_at DESC
+        """)
+        out = []
+        for _, row in df.iterrows():
+            out.append(AuditFileRow(
+                file_name=_safe_str(row.get("file_name")),
+                file_path_in_volume=_safe_str(row.get("file_path_in_volume")),
+                business_unit=_safe_str(row.get("business_unit")) or None,
+                validation_status=_safe_str(row.get("validation_status")) or "rejected",
+                rejection_reason=_safe_str(row.get("rejection_reason")) or None,
+                rejection_explanation=_safe_str(row.get("rejection_explanation")) or None,
+                processed_at=_safe_ts(row.get("processed_at")),
+                moved_to_review_at=_safe_ts(row.get("moved_to_review_at")),
+            ))
+        return out
+
+    def get_file_bytes_from_volume(self, volume_path: str) -> tuple[bool, Optional[bytes], str]:
+        """Read file from UC volume and return bytes (for download)."""
+        import tempfile
+        try:
+            from pyspark.dbutils import DBUtils
+            dbutils = DBUtils(self.spark)
+        except Exception as e:
+            return (False, None, str(e))
+        tmp_path = None
+        try:
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp:
+                tmp_path = tmp.name
+            dbutils.fs.cp(volume_path, f"file:{tmp_path}")
+            with open(tmp_path, "rb") as f:
+                data = f.read()
+            return (True, data, "OK")
+        except Exception as e:
+            return (False, None, str(e))
+        finally:
+            if tmp_path and os.path.exists(tmp_path):
+                try:
+                    os.unlink(tmp_path)
+                except Exception:
+                    pass
+
+    def move_rejected_to_sharepoint(self, secret_scope: str = "getnet-sharepoint") -> tuple[int, str]:
+        """Move rejected files (moved_to_review_at IS NULL) to SharePoint review folder; update audit."""
+        import tempfile
+        try:
+            from pyspark.dbutils import DBUtils
+            dbutils = DBUtils(self.spark)
+        except Exception as e:
+            return (0, f"dbutils unavailable: {e}")
+        try:
+            tenant_id = dbutils.secrets.get(scope=secret_scope, key="tenant_id")
+            client_id = dbutils.secrets.get(scope=secret_scope, key="client_id")
+            client_secret = dbutils.secrets.get(scope=secret_scope, key="client_secret")
+            site_id = dbutils.secrets.get(scope=secret_scope, key="sharepoint_site_id")
+            drive_id = dbutils.secrets.get(scope=secret_scope, key="sharepoint_drive_id")
+            review_folder_path = dbutils.secrets.get(scope=secret_scope, key="sharepoint_review_folder_path")
+        except Exception as e:
+            return (0, f"Missing secret: {e}")
+        _python_dir = os.path.join(os.path.dirname(__file__), "..", "python")
+        if _python_dir not in sys.path:
+            sys.path.insert(0, _python_dir)
+        try:
+            from sharepoint_client import get_graph_token, upload_file
+        except Exception as e:
+            return (0, f"SharePoint client: {e}")
+        audit_table = f"{self.full_schema}.closure_file_audit"
+        df = self.spark.sql(f"""
+            SELECT file_name, file_path_in_volume
+            FROM {audit_table}
+            WHERE validation_status = 'rejected' AND moved_to_review_at IS NULL
+        """)
+        rows = df.collect()
+        if not rows:
+            return (0, "No invalid files pending to send to review.")
+        now = datetime.utcnow()
+        token = get_graph_token(tenant_id, client_id, client_secret)
+        updated = []
+        for row in rows:
+            file_path = row.file_path_in_volume
+            file_name = row.file_name
+            try:
+                ok, content, _ = self.get_file_bytes_from_volume(file_path)
+                if not ok or content is None:
+                    continue
+                upload_file(token, site_id, drive_id, review_folder_path, file_name, content)
+                updated.append((file_path, now))
+            except Exception:
+                continue
+        if not updated:
+            return (0, "Failed to upload any file to SharePoint.")
+        from delta.tables import DeltaTable
+        from pyspark.sql.functions import col, lit
+        dt = DeltaTable.forName(self.spark, audit_table)
+        for file_path, ts in updated:
+            dt.update(col("file_path_in_volume") == file_path, {"moved_to_review_at": lit(ts), "updated_at": lit(ts)})
+        return (len(updated), f"Moved {len(updated)} file(s) to SharePoint review folder.")
 
     def get_document_flow(self) -> DocumentFlowSummary:
         df_audit = self._run_sql(f"""
@@ -432,6 +732,31 @@ def _mock_quality() -> list[ClosureQualitySummary]:
     ]
 
 
+def _mock_audit_files() -> list[AuditFileRow]:
+    return [
+        AuditFileRow(
+            file_name="closure_bu_a.xlsx",
+            file_path_in_volume="/Volumes/getnet_closure_dev/financial_closure/raw_closure_files/2025-02-20/closure_bu_a.xlsx",
+            business_unit="BU_A",
+            validation_status="valid",
+            rejection_reason=None,
+            rejection_explanation=None,
+            processed_at=datetime(2025, 2, 20, 8, 5),
+            moved_to_review_at=None,
+        ),
+        AuditFileRow(
+            file_name="closure_bu_c_bad.xlsx",
+            file_path_in_volume="/Volumes/getnet_closure_dev/financial_closure/raw_closure_files/2025-02-20/closure_bu_c_bad.xlsx",
+            business_unit="BU_C",
+            validation_status="rejected",
+            rejection_reason="invalid_format",
+            rejection_explanation="Row 3: amount invalid; Row 5: closure_period invalid.",
+            processed_at=datetime(2025, 2, 20, 7, 58),
+            moved_to_review_at=None,
+        ),
+    ]
+
+
 class MockBackend(ClosureBackend):
     """Backend that returns mock data (Pydantic models) when Databricks is unavailable."""
 
@@ -461,6 +786,15 @@ class MockBackend(ClosureBackend):
 
     def get_quality_summary(self) -> list[ClosureQualitySummary]:
         return _mock_quality()
+
+    def get_all_audit_files(self) -> list[AuditFileRow]:
+        return _mock_audit_files()
+
+    def get_file_bytes_from_volume(self, volume_path: str) -> tuple[bool, Optional[bytes], str]:
+        return (False, None, "Download only available when the app runs on Databricks.")
+
+    def move_rejected_to_sharepoint(self, secret_scope: str = "getnet-sharepoint") -> tuple[int, str]:
+        return (0, "Only available when the app runs on Databricks with SharePoint secrets.")
 
 
 def get_backend(catalog: str, schema: str, period: Optional[str] = None) -> tuple[ClosureBackend, bool]:

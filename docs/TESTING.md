@@ -41,6 +41,7 @@ Then open http://localhost:8501 and verify:
 - **Validation status by BU**: Table with business_unit, validation_status, file_count, last_processed.
 - **Global financial closure sent**: Table or "No global closure send log yet".
 - **Rejected files**: Table or "No rejected files".
+- **All files (audit)**: Single table (valid + invalid) with File, Path, BU, Status, Rejection reason, Processed at, Moved to review; download buttons (when on Databricks) and "How to fix invalid files" copy; **Send invalid files to SharePoint review** button when using real backend.
 
 The app uses a cached data loader (TTL 60s) and a loading spinner; changing filters refetches data after cache expiry.
 
@@ -90,6 +91,21 @@ Use this to validate that the app delivers high value for Getnet financial closu
 | **Validation status** | Per-BU valid/rejected counts and last processed support reviewer and orchestrator. |
 | **Global closure sent** | Log of when and to whom the global report was sent supports audit and global team. |
 | **Rejected files** | List of files needing review with reason and dates supports closed-loop correction. |
+| **All files (audit)** | One table for valid + invalid files; download and fix options; "Send to review" moves invalid files to SharePoint — supports accelerating approval. |
+
+### Expert UI testing (deployed app)
+
+When testing the deployed Databricks app as an expert tester:
+
+1. **Sidebar**: Change Catalog, Schema, Period, Raw volume; confirm caption and no script injection.
+2. **KPIs**: All five cards render; numbers align with document flow (e.g. files valid + rejected ≈ total).
+3. **Document flow**: Four stages with counts; caption mentions accelerating approval.
+4. **All files (audit)**: Table shows all audit rows; rejection reason truncated; download (real backend) and "Send to review" work; fix options copy is clear.
+5. **Closure by BU**: Chart and table match; no empty chart when data exists.
+6. **Error analysis**: Caption suggests fixing patterns to improve approval rates; table or success message.
+7. **Closure health**: SLA and quality sections; datetimes formatted consistently.
+8. **Validation status by BU**, **Global closure sent**, **Rejected files**: Tables with formatted datetimes; empty states are friendly (e.g. "approval pipeline unblocked" when no rejected).
+9. **No console errors or Python tracebacks** in app logs.
 
 ---
 

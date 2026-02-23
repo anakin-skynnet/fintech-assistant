@@ -16,6 +16,7 @@ except ImportError:
 
 from backend import get_backend
 from models import (
+    AuditFileRow,
     AuditStatusByBU,
     ClosureByBU,
     ClosureKPIs,
@@ -32,7 +33,7 @@ def _load_closure_data(catalog: str, schema: str, period: str):
     Load all app data from backend. Cached 60s per (catalog, schema, period)
     to avoid refetching on every Streamlit rerun.
     Returns (use_real_data, kpis, closure_by_bu, flow, err_summary, audit_list,
-             global_sent, rejected, sla_list, quality_list).
+             global_sent, rejected, audit_files, sla_list, quality_list).
     """
     backend, use_real_data = get_backend(catalog, schema, period or None)
     kpis = backend.get_kpis()
@@ -42,6 +43,7 @@ def _load_closure_data(catalog: str, schema: str, period: str):
     audit_list = backend.get_audit_status_by_bu()
     global_sent = backend.get_global_closure_sent()
     rejected = backend.get_rejected_files()
+    audit_files = backend.get_all_audit_files()
     sla_list = backend.get_sla_metrics()
     quality_list = backend.get_quality_summary()
     return (
@@ -53,6 +55,7 @@ def _load_closure_data(catalog: str, schema: str, period: str):
         audit_list,
         global_sent,
         rejected,
+        audit_files,
         sla_list,
         quality_list,
     )
@@ -203,6 +206,12 @@ def main():
             key="period",
             placeholder="Optional",
         )
+        volume_raw = st.text_input(
+            "Raw volume name",
+            value=os.environ.get("CLOSURE_VOLUME_RAW", "raw_closure_files"),
+            key="volume_raw",
+            placeholder="raw_closure_files",
+        )
         st.markdown("---")
         st.caption("Getnet Financial Closure · Data from backend (UC or mock)")
 
@@ -216,6 +225,7 @@ def main():
             audit_list,
             global_sent,
             rejected,
+            audit_files,
             sla_list,
             quality_list,
         ) = _load_closure_data(catalog.strip(), schema.strip(), period.strip())
@@ -223,7 +233,7 @@ def main():
     # Title
     st.markdown('<p class="main-title">Getnet Financial Closure</p>', unsafe_allow_html=True)
     st.markdown(
-        '<p class="main-subtitle">Analytics by business unit, document flow, and global closure status</p>',
+        '<p class="main-subtitle">Analytics to accelerate approval: document flow, validation status, and global closure</p>',
         unsafe_allow_html=True,
     )
 
@@ -232,6 +242,32 @@ def main():
             '<div class="mock-banner">📌 Using mock data — run this app on Databricks with Spark to load from Unity Catalog.</div>',
             unsafe_allow_html=True,
         )
+
+    # Upload Excel to raw volume (same as SharePoint ingest) — only when connected to Databricks
+    if use_real_data:
+        with st.expander("📤 Upload Excel to raw volume", expanded=False):
+            st.caption("Files are stored in the same volume as SharePoint ingest. **Validation runs automatically**: audit table is updated with date, file name, location, status (valid/invalid), and wrong values if any.")
+            uploaded = st.file_uploader(
+                "Choose Excel file(s)",
+                type=["xlsx", "xls"],
+                accept_multiple_files=True,
+                key="upload_excel",
+            )
+            if uploaded:
+                if st.button("Upload to volume", key="upload_btn"):
+                    backend, _ = get_backend(catalog.strip(), schema.strip(), period.strip())
+                    vol = (volume_raw or "raw_closure_files").strip()
+                    for f in uploaded:
+                        ok, msg = backend.upload_file_to_volume(vol, f.getvalue(), f.name)
+                        if ok:
+                            if "Validated: valid" in msg:
+                                st.success(f"**{f.name}**: Saved. Validated: **valid** — audit and closure data updated.")
+                            elif "Validated: invalid" in msg:
+                                st.warning(f"**{f.name}**: Saved. Validated: **invalid** — audit updated with errors. {msg.split('Validated: invalid')[-1].strip()}")
+                            else:
+                                st.success(f"**{f.name}**: {msg}")
+                        else:
+                            st.error(f"**{f.name}**: {msg}")
 
     # KPIs from backend (Pydantic)
     col1, col2, col3, col4, col5 = st.columns(5)
@@ -275,7 +311,66 @@ def main():
         f'<div class="flow-pipeline">{"".join(stages_html)}</div>',
         unsafe_allow_html=True,
     )
-    st.caption("Pipeline: ingested → valid / rejected → moved to review.")
+    st.caption("Pipeline: ingested → valid / rejected → moved to review. Focus on moving files to valid to accelerate approval.")
+
+    # All files (audit) — one table valid + invalid, download, fix options, Send to review
+    st.markdown('<p class="section-title">All files (audit)</p>', unsafe_allow_html=True)
+    if audit_files:
+        def _row_list(a: AuditFileRow):
+            reason = (a.rejection_explanation or a.rejection_reason or "")[:80]
+            if (a.rejection_explanation or a.rejection_reason) and len((a.rejection_explanation or a.rejection_reason or "")) > 80:
+                reason += "..."
+            return [
+                a.file_name,
+                a.file_path_in_volume[:60] + "..." if len(a.file_path_in_volume) > 60 else a.file_path_in_volume,
+                a.business_unit or "",
+                a.validation_status,
+                reason,
+                a.processed_at.strftime("%Y-%m-%d %H:%M") if a.processed_at else "",
+                a.moved_to_review_at.strftime("%Y-%m-%d %H:%M") if a.moved_to_review_at else "",
+            ]
+        df_audit = _models_to_dataframe(
+            audit_files,
+            ["File", "Path", "BU", "Status", "Rejection reason", "Processed at", "Moved to review"],
+            _row_list,
+        )
+        st.dataframe(df_audit, use_container_width=True, hide_index=True)
+        # Download per row (only when real backend and path available). Limit to 25 files to avoid slow loads.
+        if use_real_data:
+            st.caption("Download a file to fix locally, then re-upload using **Upload Excel to raw volume** above.")
+            backend, _ = get_backend(catalog.strip(), schema.strip(), period.strip())
+            max_downloads = 25
+            for i, a in enumerate(audit_files):
+                if i >= max_downloads:
+                    break
+                if not a.file_path_in_volume:
+                    continue
+                ok, data, msg = backend.get_file_bytes_from_volume(a.file_path_in_volume)
+                if ok and data:
+                    st.download_button(
+                        label=f"Download {a.file_name}",
+                        data=data,
+                        file_name=a.file_name,
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        key=f"dl_{a.file_path_in_volume.replace('/', '_')}",
+                    )
+            if len(audit_files) > max_downloads:
+                st.caption(f"Download buttons shown for the most recent {max_downloads} files. Use volume path to access others.")
+        st.markdown("**How to fix invalid files:**")
+        st.markdown("- **Option 1 (recommended):** Download the file using the button above → fix it locally → re-upload in **Upload Excel to raw volume**.")
+        st.markdown("- **Option 2:** Run the job **Reject to SharePoint** (or use **Send to review** below) to move invalid files to the review folder; fix and re-submit from there.")
+    else:
+        st.caption("No audit rows for the selected period. Upload files or run ingest + validate.")
+
+    # Send to review button (invalid files → SharePoint)
+    if use_real_data:
+        backend, _ = get_backend(catalog.strip(), schema.strip(), period.strip())
+        if st.button("Send invalid files to SharePoint review", type="primary", key="send_to_review"):
+            count, message = backend.move_rejected_to_sharepoint("getnet-sharepoint")
+            if count > 0:
+                st.success(message)
+            else:
+                st.info(message)
 
     # Closure by business unit
     st.markdown('<p class="section-title">Closure by business unit</p>', unsafe_allow_html=True)
@@ -315,7 +410,7 @@ def main():
     else:
         st.info("No closure data for the selected filters.")
 
-    # Error analysis (new component)
+    # Error analysis — high value for fixing rejections and accelerating approval
     st.markdown('<p class="section-title">Error analysis (validation failures)</p>', unsafe_allow_html=True)
     if err_summary.by_field_and_cause:
         df_err = _models_to_dataframe(
@@ -323,7 +418,7 @@ def main():
             ["field", "invalid_cause", "count", "example_value"],
             lambda x: [x.field or "", x.invalid_cause or "", x.count, x.example_value or ""],
         )
-        st.caption(f"Total validation errors: {err_summary.total_errors} across {err_summary.files_with_errors} file(s).")
+        st.caption(f"Total validation errors: {err_summary.total_errors} across {err_summary.files_with_errors} file(s). Fix these patterns to improve approval rates.")
         st.dataframe(df_err, use_container_width=True, hide_index=True)
     else:
         st.success("No validation errors in the selected period.")
@@ -331,10 +426,20 @@ def main():
     # Closure health (SLA + quality)
     st.markdown('<p class="section-title">Closure health</p>', unsafe_allow_html=True)
     if sla_list:
+        def _sla_row(x):
+            return [
+                x.period,
+                x.business_unit or "",
+                x.first_file_at.strftime("%Y-%m-%d %H:%M") if x.first_file_at else "",
+                x.first_valid_at.strftime("%Y-%m-%d %H:%M") if x.first_valid_at else "",
+                f"{x.hours_to_valid:.2f}" if x.hours_to_valid is not None else "",
+                x.files_rejected,
+                x.files_valid,
+            ]
         df_sla = _models_to_dataframe(
             sla_list,
             ["period", "business_unit", "first_file_at", "first_valid_at", "hours_to_valid", "files_rejected", "files_valid"],
-            lambda x: [x.period, x.business_unit or "", x.first_file_at, x.first_valid_at, x.hours_to_valid, x.files_rejected, x.files_valid],
+            _sla_row,
         )
         st.caption("SLA metrics (first file, first valid, hours to valid).")
         st.dataframe(df_sla, use_container_width=True, hide_index=True)
@@ -350,7 +455,12 @@ def main():
         df_audit = _models_to_dataframe(
             audit_list,
             ["business_unit", "validation_status", "file_count", "last_processed"],
-            lambda x: [x.business_unit or "", x.validation_status, x.file_count, x.last_processed],
+            lambda x: [
+                x.business_unit or "",
+                x.validation_status,
+                x.file_count,
+                x.last_processed.strftime("%Y-%m-%d %H:%M") if x.last_processed else "",
+            ],
         )
         st.dataframe(df_audit, use_container_width=True, hide_index=True)
     else:
@@ -362,23 +472,34 @@ def main():
         df_global = _models_to_dataframe(
             global_sent,
             ["closure_period", "sent_at", "recipient_email", "job_run_id"],
-            lambda x: [x.closure_period, x.sent_at, x.recipient_email or "", x.job_run_id or ""],
+            lambda x: [
+                x.closure_period,
+                x.sent_at.strftime("%Y-%m-%d %H:%M") if x.sent_at else "",
+                x.recipient_email or "",
+                x.job_run_id or "",
+            ],
         )
         st.dataframe(df_global, use_container_width=True, hide_index=True)
     else:
         st.info("No global closure send log yet.")
 
-    # Rejected files
+    # Rejected files — fix or send to review to unblock approval
     st.markdown('<p class="section-title">Rejected files (need review)</p>', unsafe_allow_html=True)
     if rejected:
         df_rej = _models_to_dataframe(
             rejected,
             ["file_name", "business_unit", "rejection_reason", "processed_at", "moved_to_review_at"],
-            lambda x: [x.file_name, x.business_unit or "", x.rejection_reason or "", x.processed_at, x.moved_to_review_at],
+            lambda x: [
+                x.file_name,
+                x.business_unit or "",
+                x.rejection_reason or "",
+                x.processed_at.strftime("%Y-%m-%d %H:%M") if x.processed_at else "",
+                x.moved_to_review_at.strftime("%Y-%m-%d %H:%M") if x.moved_to_review_at else "",
+            ],
         )
         st.dataframe(df_rej, use_container_width=True, hide_index=True)
     else:
-        st.success("No rejected files.")
+        st.success("No rejected files. All files in scope are valid — approval pipeline unblocked.")
 
     st.sidebar.markdown("---")
     st.sidebar.caption("Built for Getnet · Databricks · Backend + Pydantic")

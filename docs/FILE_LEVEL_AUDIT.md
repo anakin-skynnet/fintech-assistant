@@ -44,10 +44,15 @@ Rejected files can be corrected and re-uploaded; the same path is re-validated a
 
 ---
 
+## When validation is triggered
+
+- **App upload**: When a user uploads an Excel file in the Streamlit app, the file is written to the raw volume and **validation runs immediately** in the same request. The audit table is updated with date, file name, location, status (valid/invalid), and wrong values (if any); valid files are appended to `closure_data`.
+- **SharePoint ingest**: The **closure_pipeline** job runs Ingest → Validate and Load in order. So whenever files are ingested from SharePoint into the volume, the next step in the pipeline runs validation and updates the audit table. Running the **Validate and Load** job (or the full pipeline) processes all Excel files in the volume and updates the audit accordingly.
+
 ## Where it is implemented
 
 - **Validation (all-or-nothing)**: `src/python/validator.py` — `validate_dataframe()` returns a list of errors; if the list is non-empty, the file is treated as invalid.
-- **Audit write**: `src/notebooks/validate_and_load.py` — One audit row per file with `validation_status`, `rejection_reason`, `validation_errors_summary`, `processed_at`; valid files only are appended to `closure_data`.
+- **Audit write**: `src/notebooks/validate_and_load.py` — One audit row per file with `validation_status`, `rejection_reason`, `validation_errors_summary`, `processed_at`; valid files only are appended to `closure_data`. The same logic runs in the app backend after upload (`_validate_and_audit` in `src/app/backend.py`).
 - **Send back to BUs**: `src/notebooks/reject_to_sharepoint.py` — Moves rejected files to the review folder; reviewer/BU notification can use `closure_file_audit` and `closure_audit_errors` for the reason (errors detected).
 
 Validation rules (required fields, formats, greater_than_zero, etc.) are defined in **`config/closure_schema.yaml`**.
