@@ -4,7 +4,7 @@ resources:
   jobs:
     closure_pipeline:
       name: "Getnet Closure - Full Pipeline (Ingest → Validate → Reject → Global Send)"
-      description: "Runs ingest, validate and load, move rejected to SharePoint, then global closure send. Use for one-shot or scheduled e2e."
+      description: "Ingest → Validate → Rejection explanation agent → Reject to SharePoint → Notify BU on rejection → Global closure send. Use for one-shot or scheduled e2e."
       max_concurrent_runs: 1
       tasks:
         - task_key: ingest
@@ -65,9 +65,32 @@ resources:
           max_retries: 2
           min_retry_interval_millis: 60000
 
-        - task_key: reject_to_sharepoint
+        - task_key: agent_rejection_explanation
           depends_on:
             - task_key: validate_and_load
+          notebook_task:
+            notebook_path: ../../src/notebooks/agent_rejection_explanation.py
+            source: WORKSPACE
+            base_parameters:
+              catalog: ${var.catalog}
+              schema: ${var.schema}
+          new_cluster:
+            spark_version: "13.3.x-scala2.12"
+            node_type_id: "Standard_DS3_v2"
+            num_workers: 0
+            data_security_mode: USER_ISOLATION
+            spark_conf:
+              spark.databricks.cluster.profile: singleNode
+              spark.master: local[*]
+            custom_tags:
+              ResourceClass: SingleNode
+          retry_on_timeout: true
+          max_retries: 1
+          min_retry_interval_millis: 30000
+
+        - task_key: reject_to_sharepoint
+          depends_on:
+            - task_key: agent_rejection_explanation
           notebook_task:
             notebook_path: ../../src/notebooks/reject_to_sharepoint.py
             source: WORKSPACE
@@ -94,9 +117,35 @@ resources:
           max_retries: 2
           min_retry_interval_millis: 60000
 
-        - task_key: global_closure_send
+        - task_key: notify_bu_on_rejection
           depends_on:
             - task_key: reject_to_sharepoint
+          notebook_task:
+            notebook_path: ../../src/notebooks/notify_bu_on_rejection.py
+            source: WORKSPACE
+            base_parameters:
+              catalog: ${var.catalog}
+              schema: ${var.schema}
+          libraries:
+            - pypi:
+                package: pyyaml
+          new_cluster:
+            spark_version: "13.3.x-scala2.12"
+            node_type_id: "Standard_DS3_v2"
+            num_workers: 0
+            data_security_mode: USER_ISOLATION
+            spark_conf:
+              spark.databricks.cluster.profile: singleNode
+              spark.master: local[*]
+            custom_tags:
+              ResourceClass: SingleNode
+          retry_on_timeout: true
+          max_retries: 1
+          min_retry_interval_millis: 30000
+
+        - task_key: global_closure_send
+          depends_on:
+            - task_key: notify_bu_on_rejection
           notebook_task:
             notebook_path: ../../src/notebooks/global_closure_send.py
             source: WORKSPACE

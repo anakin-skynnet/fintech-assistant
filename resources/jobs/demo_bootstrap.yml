@@ -1,0 +1,31 @@
+# Demo bootstrap: seed raw volume with sample Excel files (BU_A, BU_B, BU_C)
+# Run once after setup_uc to have files for validate_and_load / closure_pipeline without SharePoint
+resources:
+  jobs:
+    demo_bootstrap:
+      name: "Getnet Closure - Demo Bootstrap (seed sample Excel in volume)"
+      description: "Creates valid sample closure Excel files in the raw volume for demo/e2e. Run after UC Setup."
+      tasks:
+        - task_key: "bootstrap"
+          notebook_task:
+            notebook_path: ../../src/notebooks/demo_bootstrap.py
+            source: WORKSPACE
+            base_parameters:
+              catalog: ${var.catalog}
+              schema: ${var.schema}
+              volume_raw: ${var.volume_raw}
+          libraries:
+            - pypi:
+                package: pandas
+            - pypi:
+                package: openpyxl
+          new_cluster:
+            spark_version: "13.3.x-scala2.12"
+            node_type_id: "Standard_DS3_v2"
+            num_workers: 0
+            data_security_mode: USER_ISOLATION
+            spark_conf:
+              spark.databricks.cluster.profile: singleNode
+              spark.master: local[*]
+            custom_tags:
+              ResourceClass: SingleNode

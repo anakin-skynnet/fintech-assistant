@@ -1,0 +1,25 @@
+# One-time workflow extension: reviewer/approval columns, notified_bu_at, global_closure_recipients
+# Run once per environment after setup_uc
+resources:
+  jobs:
+    setup_uc_workflow_extension:
+      name: "Getnet Closure - Workflow Extension (reviewer, recipients, notified_bu_at)"
+      description: "Add reviewer/approval columns to closure_file_audit, global_team_notified_at and global_closure_recipients. Run once after UC Setup."
+      tasks:
+        - task_key: "extension"
+          notebook_task:
+            notebook_path: ../../src/notebooks/setup_uc_workflow_extension.py
+            source: WORKSPACE
+            base_parameters:
+              catalog: ${var.catalog}
+              schema: ${var.schema}
+          new_cluster:
+            spark_version: "13.3.x-scala2.12"
+            node_type_id: "Standard_DS3_v2"
+            num_workers: 0
+            data_security_mode: USER_ISOLATION
+            spark_conf:
+              spark.databricks.cluster.profile: singleNode
+              spark.master: local[*]
+            custom_tags:
+              ResourceClass: SingleNode

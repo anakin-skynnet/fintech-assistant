@@ -1,6 +1,31 @@
 # Genie Runbook — Getnet Financial Closure
 
-## 1. Financial / global Genie space
+## 1. Valid files by BU & Global Financial Closure (recommended first space)
+
+**Purpose**: Explore **valid financial files** from business units and **generate or inspect the Global Financial Closure**. One space for both BU-level valid data and global send status.
+
+**Data sources** (replace `{catalog}` and `{schema}` with yours, e.g. `getnet_closure_dev.financial_closure`):
+
+- `{catalog}.{schema}.closure_file_audit` — one row per file; filter `validation_status = 'valid'` for valid files by BU.
+- `{catalog}.{schema}.closure_data` — valid closure rows with `business_unit`, `source_file_name`, `amount`, `closure_period`; use to explore valid financial data and aggregate by BU.
+- `{catalog}.{schema}.global_closure_sent` — when and to whom the global closure was sent (generate/report side).
+- `{catalog}.{schema}.closure_audit_errors` — validation error details for rejected files (optional; for “why invalid”).
+
+**Example questions**:
+
+- Which files are valid this month?
+- Summarize closure by business unit from valid files.
+- Show valid files per BU for period 2025-02.
+- What is the total amount by business unit from valid files?
+- Has the global financial closure been sent for 2025-02?
+- List valid source files and total amount by business unit.
+- What were the most common validation errors in rejected files?
+
+**Setup**: Create a Genie space in the workspace, attach your SQL warehouse, add the four tables above as data sources. Grant access to financial and BU/reviewer teams. You can use the script below after running `setup_uc` and setting `CATALOG`, `SCHEMA`, and (optionally) `WAREHOUSE_ID`.
+
+---
+
+## 2. Financial / global Genie space (alternative)
 
 **Purpose**: High-level view of closure status, rejections, and closure data for finance and global teams.
 
@@ -21,7 +46,7 @@
 
 ---
 
-## 2. Genie for business units (rejected files and wrong-field summary)
+## 3. Genie for business units (rejected files and wrong-field summary)
 
 **Purpose**: Let business units **talk with the data**, **check rejected files**, and see the **summary of wrong fields** (row, field, value, invalid cause) without writing SQL.
 
@@ -43,4 +68,16 @@ The view `closure_audit_errors` parses `validation_errors_summary` JSON into col
 
 **Filtering**: Filter by `business_unit` and by `processed_at` (or closure period) as needed. Document for BUs how to choose their BU (e.g. from a dropdown or by naming convention).
 
-**Setup**: Create a second Genie space, add `closure_file_audit` and `closure_audit_errors` as data sources. Grant access to BU-relevant groups. Add this runbook (or a short “how to ask Genie” guide) to your internal docs.
+**Setup**: Create a second Genie space, add `closure_file_audit` and `closure_audit_errors` as data sources. Grant access to BU-relevant groups. Add this runbook (or a short how-to-ask-Genie guide) to your internal docs.
+
+---
+
+## Creating the "Valid files by BU & Global Closure" space (after setup_uc)
+
+1. Run **setup_uc** so that `closure_file_audit`, `closure_data`, `global_closure_sent`, and `closure_audit_errors` exist in your catalog and schema.
+2. In the Databricks workspace: **Genie** → **Create space** (or **New space**).
+3. **Name**: e.g. `Financial Closure — Valid files by BU & Global Closure`.
+4. **Warehouse**: Select the SQL warehouse used for closure queries.
+5. **Data sources**: Add the four tables (e.g. `getnet_closure_dev.financial_closure.closure_file_audit`, same for `closure_data`, `global_closure_sent`, `closure_audit_errors`).
+6. **Permissions**: Grant **Can run** (or **Can edit**) to financial and BU/reviewer groups.
+7. Pin or document the example questions from section 1 so users can start with "Which files are valid?" and "Summarize closure by business unit."

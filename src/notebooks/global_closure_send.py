@@ -21,6 +21,7 @@ dbutils.widgets.text("run_prefix_job_key", "global_closure_send", "Job key for r
 dbutils.widgets.dropdown("require_reviewer_approval", "false", ["true", "false"], "Require reviewer approval per BU (need approval_status column)")
 dbutils.widgets.text("closure_roles_path", "", "Optional: path to closure_roles.yaml for global_team (or use secret global_team_emails)")
 dbutils.widgets.text("global_team_emails", "", "Override: comma-separated global_team emails (overrides closure_roles_path/secret)")
+dbutils.widgets.text("teams_webhook_url", "", "Optional: Teams incoming webhook URL to post when global closure is sent")
 
 # COMMAND ----------
 
@@ -259,3 +260,14 @@ spark.createDataFrame([row]).write.format("delta").mode("append").saveAsTable(gl
 # COMMAND ----------
 
 print(f"Global closure for {period} sent to {financial_lead_email}" + (f" and {len(global_team_emails)} global_team recipient(s)." if global_team_emails else "."))
+
+# Optional: post to Teams channel
+teams_url = dbutils.widgets.get("teams_webhook_url").strip()
+if teams_url:
+    try:
+        sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "python"))
+        from teams_send import send_teams_webhook, format_global_sent_message
+        send_teams_webhook(teams_url, format_global_sent_message(period, out_name))
+        print("Teams notification sent.")
+    except Exception as e:
+        print(f"Teams webhook failed (non-fatal): {e}")

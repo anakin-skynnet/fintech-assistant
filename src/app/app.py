@@ -28,14 +28,15 @@ from models import (
 
 
 @st.cache_data(ttl=60)
-def _load_closure_data(catalog: str, schema: str, period: str):
+def _load_closure_data(catalog: str, schema: str, period: str, use_mock: bool = False):
     """
-    Load all app data from backend. Cached 60s per (catalog, schema, period)
+    Load all app data from backend. Cached 60s per (catalog, schema, period, use_mock)
     to avoid refetching on every Streamlit rerun.
+    use_mock: if True, force mock backend; if False, use real (Spark) when available.
     Returns (use_real_data, kpis, closure_by_bu, flow, err_summary, audit_list,
              global_sent, rejected, audit_files, sla_list, quality_list).
     """
-    backend, use_real_data = get_backend(catalog, schema, period or None)
+    backend, use_real_data = get_backend(catalog, schema, period or None, force_mock=use_mock)
     kpis = backend.get_kpis()
     closure_by_bu = backend.get_closure_by_bu()
     flow = backend.get_document_flow()
@@ -275,6 +276,16 @@ def _models_to_dataframe(items: list, columns: list[str], row_to_list):
 def main():
     # Sidebar: filters and branding
     with st.sidebar:
+        st.markdown("### 📋 Data source")
+        data_source = st.radio(
+            "Source",
+            options=["real", "mock"],
+            format_func=lambda x: "Real (Unity Catalog)" if x == "real" else "Mock (sample data)",
+            index=0,
+            key="data_source",
+            help="Real: live data from Unity Catalog when running on Databricks. Mock: sample data for demos or when not connected.",
+        )
+        use_mock = data_source == "mock"
         st.markdown("### 📋 Filters")
         st.caption("Catalog, schema, and period for closure data.")
         catalog = st.text_input(
@@ -312,7 +323,7 @@ def main():
             audit_files,
             sla_list,
             quality_list,
-        ) = _load_closure_data(catalog.strip(), schema.strip(), period.strip())
+        ) = _load_closure_data(catalog.strip(), schema.strip(), period.strip(), use_mock=use_mock)
 
     # Title
     st.markdown('<p class="main-title">Getnet Financial Closure</p>', unsafe_allow_html=True)
@@ -322,10 +333,16 @@ def main():
     )
 
     if not use_real_data:
-        st.markdown(
-            '<div class="mock-banner">📌 No mock data in production. On Databricks, this app reads files from the volume and updates the audit and closure tables. Run this app on Databricks to load from Unity Catalog.</div>',
-            unsafe_allow_html=True,
-        )
+        if use_mock:
+            st.markdown(
+                '<div class="mock-banner">📌 Showing sample (mock) data for demo. Switch to <strong>Real (Unity Catalog)</strong> in the sidebar to load live data on Databricks.</div>',
+                unsafe_allow_html=True,
+            )
+        else:
+            st.markdown(
+                '<div class="mock-banner">📌 No mock data in production. On Databricks, this app reads files from the volume and updates the audit and closure tables. Run this app on Databricks to load from Unity Catalog.</div>',
+                unsafe_allow_html=True,
+            )
 
     # Upload Excel to raw volume (same as SharePoint ingest) — only when connected to Databricks
     if use_real_data:

@@ -877,15 +877,24 @@ class MockBackend(ClosureBackend):
         return (False, "Save only available when the app runs on Databricks.")
 
 
-def get_backend(catalog: str, schema: str, period: Optional[str] = None) -> tuple[ClosureBackend, bool]:
+def get_backend(
+    catalog: str,
+    schema: str,
+    period: Optional[str] = None,
+    *,
+    force_mock: bool = False,
+) -> tuple[ClosureBackend, bool]:
     """
     Return (backend, use_real_data).
-    use_real_data is False when using mock (no Spark or backend unavailable).
+    use_real_data is False when using mock (no Spark or backend unavailable, or force_mock=True).
+    When force_mock=True, always return MockBackend regardless of Spark.
     Sanitizes catalog, schema, and period for safe SQL use.
     """
     catalog = _safe_identifier(catalog, "getnet_closure_dev")
     schema = _safe_identifier(schema, "financial_closure")
     period = _safe_period(period)
+    if force_mock:
+        return MockBackend(catalog=catalog, schema=schema, period=period), False
     spark = None
     try:
         from pyspark.sql import SparkSession

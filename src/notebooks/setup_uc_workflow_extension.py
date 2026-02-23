@@ -34,6 +34,7 @@ add_col_safe(f"{full_schema}.closure_file_audit", "reviewed_by", "STRING")
 add_col_safe(f"{full_schema}.closure_file_audit", "approval_status", "STRING")
 add_col_safe(f"{full_schema}.closure_file_audit", "approved_at", "TIMESTAMP")
 add_col_safe(f"{full_schema}.closure_file_audit", "approved_by", "STRING")
+add_col_safe(f"{full_schema}.closure_file_audit", "notified_bu_at", "TIMESTAMP")
 
 # COMMAND ----------
 
