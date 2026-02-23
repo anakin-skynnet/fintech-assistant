@@ -92,6 +92,7 @@ Use this to validate that the app delivers high value for Getnet financial closu
 | **Global closure sent** | Log of when and to whom the global report was sent supports audit and global team. |
 | **Rejected files** | List of files needing review with reason and dates supports closed-loop correction. |
 | **All files (audit)** | One table for valid + invalid files; download and fix options; "Send to review" moves invalid files to SharePoint — supports accelerating approval. |
+| **Automation & reduced intervention** | Subtitle and captions emphasize automating closure, reducing manual steps; empty states point to pipeline jobs; "Send to review" one-click; upload runs validation automatically. |
 
 ### Expert UI testing (deployed app)
 

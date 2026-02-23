@@ -214,6 +214,7 @@ def main():
         )
         st.markdown("---")
         st.caption("Getnet Financial Closure · Data from backend (UC or mock)")
+        st.caption("Pipeline automates: Ingest → Validate → Reject to review → Global send.")
 
     with st.spinner("Loading closure data..."):
         (
@@ -233,7 +234,7 @@ def main():
     # Title
     st.markdown('<p class="main-title">Getnet Financial Closure</p>', unsafe_allow_html=True)
     st.markdown(
-        '<p class="main-subtitle">Analytics to accelerate approval: document flow, validation status, and global closure</p>',
+        '<p class="main-subtitle">Automate financial closure: accelerate approval, reduce manual steps — document flow, validation, and global send</p>',
         unsafe_allow_html=True,
     )
 
@@ -246,7 +247,7 @@ def main():
     # Upload Excel to raw volume (same as SharePoint ingest) — only when connected to Databricks
     if use_real_data:
         with st.expander("📤 Upload Excel to raw volume", expanded=False):
-            st.caption("Files are stored in the same volume as SharePoint ingest. **Validation runs automatically**: audit table is updated with date, file name, location, status (valid/invalid), and wrong values if any.")
+            st.caption("Files are stored in the same volume as SharePoint ingest. **Validation runs automatically** (no separate job): audit table is updated with date, file name, status (valid/invalid), and errors. Reduces manual re-runs.")
             uploaded = st.file_uploader(
                 "Choose Excel file(s)",
                 type=["xlsx", "xls"],
@@ -269,7 +270,7 @@ def main():
                         else:
                             st.error(f"**{f.name}**: {msg}")
 
-    # KPIs from backend (Pydantic)
+    # KPIs from backend (Pydantic) — key metrics for closure and automation health
     col1, col2, col3, col4, col5 = st.columns(5)
     with col1:
         st.markdown(
@@ -297,21 +298,24 @@ def main():
             unsafe_allow_html=True,
         )
 
-    # Document flow (new component)
-    st.markdown('<p class="section-title">Document flow</p>', unsafe_allow_html=True)
-    stages_html = []
-    for i, s in enumerate(flow.stages):
-        color = "var(--valid)" if s.stage == "valid" else ("var(--rejected)" if s.stage in ("rejected", "moved_to_review") else "var(--accent)")
-        stages_html.append(
-            f'<div class="flow-stage"><div class="flow-count" style="color: {color};">{s.count}</div><div class="flow-label">{s.label}</div></div>'
+    # Document flow — automated pipeline visibility
+    st.markdown('<p class="section-title">Document flow (automated pipeline)</p>', unsafe_allow_html=True)
+    if flow.stages:
+        stages_html = []
+        for i, s in enumerate(flow.stages):
+            color = "var(--valid)" if s.stage == "valid" else ("var(--rejected)" if s.stage in ("rejected", "moved_to_review") else "var(--accent)")
+            stages_html.append(
+                f'<div class="flow-stage"><div class="flow-count" style="color: {color};">{s.count}</div><div class="flow-label">{s.label}</div></div>'
+            )
+            if i < len(flow.stages) - 1:
+                stages_html.append('<span class="flow-arrow">→</span>')
+        st.markdown(
+            f'<div class="flow-pipeline">{"".join(stages_html)}</div>',
+            unsafe_allow_html=True,
         )
-        if i < len(flow.stages) - 1:
-            stages_html.append('<span class="flow-arrow">→</span>')
-    st.markdown(
-        f'<div class="flow-pipeline">{"".join(stages_html)}</div>',
-        unsafe_allow_html=True,
-    )
-    st.caption("Pipeline: ingested → valid / rejected → moved to review. Focus on moving files to valid to accelerate approval.")
+        st.caption("Automated: ingested → valid / rejected → moved to review. Reduce intervention by fixing invalid files (download or send to review).")
+    else:
+        st.info("No document flow data yet. Run the pipeline job (Ingest → Validate and load) or upload files to populate.")
 
     # All files (audit) — one table valid + invalid, download, fix options, Send to review
     st.markdown('<p class="section-title">All files (audit)</p>', unsafe_allow_html=True)
@@ -360,9 +364,9 @@ def main():
         st.markdown("- **Option 1 (recommended):** Download the file using the button above → fix it locally → re-upload in **Upload Excel to raw volume**.")
         st.markdown("- **Option 2:** Run the job **Reject to SharePoint** (or use **Send to review** below) to move invalid files to the review folder; fix and re-submit from there.")
     else:
-        st.caption("No audit rows for the selected period. Upload files or run ingest + validate.")
+        st.caption("No audit rows for the selected period. Upload files above or run the pipeline job (Ingest → Validate and load) to automate.")
 
-    # Send to review button (invalid files → SharePoint)
+    # Send to review button (invalid files → SharePoint) — reduces manual copy/move
     if use_real_data:
         backend, _ = get_backend(catalog.strip(), schema.strip(), period.strip())
         if st.button("Send invalid files to SharePoint review", type="primary", key="send_to_review"):
@@ -371,6 +375,7 @@ def main():
                 st.success(message)
             else:
                 st.info(message)
+        st.caption("One click moves all pending invalid files to the review folder — no manual upload to SharePoint.")
 
     # Closure by business unit
     st.markdown('<p class="section-title">Closure by business unit</p>', unsafe_allow_html=True)
@@ -421,7 +426,7 @@ def main():
         st.caption(f"Total validation errors: {err_summary.total_errors} across {err_summary.files_with_errors} file(s). Fix these patterns to improve approval rates.")
         st.dataframe(df_err, use_container_width=True, hide_index=True)
     else:
-        st.success("No validation errors in the selected period.")
+        st.success("No validation errors in the selected period. Pipeline can proceed with minimal intervention.")
 
     # Closure health (SLA + quality)
     st.markdown('<p class="section-title">Closure health</p>', unsafe_allow_html=True)
@@ -447,7 +452,7 @@ def main():
         q = quality_list[0]
         st.caption(f"Quality: {q.total_files} files — {q.pct_valid:.1f}% valid, {q.pct_rejected:.1f}% rejected. Most common errors: {q.most_common_error_types or '—'}.")
     if not sla_list and not quality_list:
-        st.info("Run the SLA/quality job to populate closure health. No data yet.")
+        st.info("Run the **closure_sla_quality** job to populate closure health automatically. No data yet.")
 
     # Validation status by business unit
     st.markdown('<p class="section-title">Validation status by business unit</p>', unsafe_allow_html=True)
@@ -464,7 +469,7 @@ def main():
         )
         st.dataframe(df_audit, use_container_width=True, hide_index=True)
     else:
-        st.info("No audit data for the selected filters.")
+        st.info("No audit data for the selected filters. Upload files or run the pipeline to see validation status by BU.")
 
     # Global financial closure sent
     st.markdown('<p class="section-title">Global financial closure sent</p>', unsafe_allow_html=True)
@@ -481,7 +486,7 @@ def main():
         )
         st.dataframe(df_global, use_container_width=True, hide_index=True)
     else:
-        st.info("No global closure send log yet.")
+        st.info("No global closure send log yet. Run the **global_closure_send** job (or full pipeline) to automate the send.")
 
     # Rejected files — fix or send to review to unblock approval
     st.markdown('<p class="section-title">Rejected files (need review)</p>', unsafe_allow_html=True)

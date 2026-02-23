@@ -212,11 +212,8 @@ class DatabricksBackend(ClosureBackend):
     def _validate_and_audit(
         self, volume_path: str, file_bytes: bytes, file_name: str
     ) -> tuple[bool, str]:
-        """Run validation in memory (pandas + validator) for speed; no extra I/O beyond file bytes."""
-        """
-        Run validation on the file and update closure_file_audit (and closure_data if valid).
-        Returns (True, status_message) e.g. "Validated: valid" or "Validated: invalid — reason".
-        """
+        """Run validation in memory (pandas + validator) for speed; update closure_file_audit and closure_data if valid.
+        Returns (True, status_message) e.g. 'Validated: valid' or 'Validated: invalid — reason'."""
         import json
         import tempfile
         try:
