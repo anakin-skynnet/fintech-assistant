@@ -32,7 +32,21 @@ For **every** ingested file, one row is written to **`closure_file_audit`**:
 | `processed_by_job_run_id` | Job run that processed it |
 | `moved_to_review_at` | When the file was moved to the SharePoint review folder (rejected files only) |
 
-Rejected files can be corrected and re-uploaded; the same path is re-validated and the audit row is updated (and data loaded if the file becomes valid).
+Rejected files can be corrected and re-uploaded; the same path is re-validated and the audit row is **updated** (and data loaded if the file becomes valid).
+
+---
+
+## Optimal correction of invalid Excel files
+
+| Step | What to do | Result |
+|------|------------|--------|
+| 1 | See **Error analysis** and **All files (audit)** in the app for rejection reasons (row, field, invalid_cause). | Clear what to fix. |
+| 2 | **Download** the invalid file from the app (or get it from the SharePoint review folder after "Send to review"). | File available locally. |
+| 3 | Fix the Excel (correct values, dates, required fields per `config/closure_schema.yaml`). | File ready to re-submit. |
+| 4a | **App**: Re-upload via **Upload Excel to raw volume** (same filename, same day → same path). | **One audit row per path**: the existing row is updated (valid/rejected); no duplicate rows. Valid data is appended to `closure_data`. |
+| 4b | **Pipeline**: Put corrected file in SharePoint (or same volume path); run **Validate and load** (or full pipeline). | Job **merges** the audit row for that path; valid data is loaded. |
+
+**Implementation**: Both the app (`_upsert_audit_row` in `src/app/backend.py`) and the job (`validate_and_load.py` MERGE for re-ingested paths) use **one row per `file_path_in_volume`**. Re-uploading a corrected file updates that row instead of appending a duplicate, so the correction flow is optimal.
 
 ---
 
@@ -46,13 +60,13 @@ Rejected files can be corrected and re-uploaded; the same path is re-validated a
 
 ## When validation is triggered
 
-- **App upload**: When a user uploads an Excel file in the Streamlit app, the file is written to the raw volume and **validation runs immediately** in the same request. The audit table is updated with date, file name, location, status (valid/invalid), and wrong values (if any); valid files are appended to `closure_data`.
+- **App upload**: When a user uploads an Excel file in the Streamlit app, the file is written to the raw volume and **validation runs immediately** in the same request. The audit table is **upserted by path** (re-upload of a corrected file updates the same row); valid files are appended to `closure_data`.
 - **SharePoint ingest**: The **closure_pipeline** job runs Ingest → Validate and Load in order. So whenever files are ingested from SharePoint into the volume, the next step in the pipeline runs validation and updates the audit table. Running the **Validate and Load** job (or the full pipeline) processes all Excel files in the volume and updates the audit accordingly.
 
 ## Where it is implemented
 
 - **Validation (all-or-nothing)**: `src/python/validator.py` — `validate_dataframe()` returns a list of errors; if the list is non-empty, the file is treated as invalid.
-- **Audit write**: `src/notebooks/validate_and_load.py` — One audit row per file with `validation_status`, `rejection_reason`, `validation_errors_summary`, `processed_at`; valid files only are appended to `closure_data`. The same logic runs in the app backend after upload (`_validate_and_audit` in `src/app/backend.py`).
+- **Audit write**: `src/notebooks/validate_and_load.py` — One audit row per file (new rows appended; re-ingested rejected paths **merged**). App backend (`_validate_and_audit` + `_upsert_audit_row` in `src/app/backend.py`) **upserts** by `file_path_in_volume` so re-upload of a corrected file updates the same row. Valid files only are appended to `closure_data`.
 - **Send back to BUs**: `src/notebooks/reject_to_sharepoint.py` — Moves rejected files to the review folder; reviewer/BU notification can use `closure_file_audit` and `closure_audit_errors` for the reason (errors detected).
 
 Validation rules (required fields, formats, greater_than_zero, etc.) are defined in **`config/closure_schema.yaml`**.

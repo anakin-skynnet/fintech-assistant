@@ -361,8 +361,8 @@ def main():
             if len(audit_files) > max_downloads:
                 st.caption(f"Download buttons shown for the most recent {max_downloads} files. Use volume path to access others.")
         st.markdown("**How to fix invalid files:**")
-        st.markdown("- **Option 1 (recommended):** Download the file using the button above → fix it locally → re-upload in **Upload Excel to raw volume**.")
-        st.markdown("- **Option 2:** Run the job **Reject to SharePoint** (or use **Send to review** below) to move invalid files to the review folder; fix and re-submit from there.")
+        st.markdown("- **Option 1 (recommended):** Download the file above → fix it locally (use **Error analysis** for row/field/cause) → re-upload in **Upload Excel to raw volume**. Re-uploading the same file updates the audit row (no duplicate); if valid, data is loaded.")
+        st.markdown("- **Option 2:** Use **Send to review** below (or run job **Reject to SharePoint**) to move invalid files to the review folder; fix and re-submit from there, then run **Validate and load** or re-upload in the app.")
     else:
         st.caption("No audit rows for the selected period. Upload files above or run the pipeline job (Ingest → Validate and load) to automate.")
 

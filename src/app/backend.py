@@ -209,6 +209,27 @@ class DatabricksBackend(ClosureBackend):
         ok_validate, msg_validate = self._validate_and_audit(volume_path, file_bytes, safe_name)
         return (True, f"Saved to {volume_path}. {msg_validate}")
 
+    def _upsert_audit_row(self, audit_table: str, audit_row: dict) -> None:
+        """Insert or update one audit row by file_path_in_volume. Re-upload of corrected file updates same row (optimal correction)."""
+        from pyspark.sql.functions import col
+        from delta.tables import DeltaTable
+        df = self.spark.createDataFrame([audit_row])
+        DeltaTable.forName(self.spark, audit_table).alias("t").merge(
+            df.alias("u"),
+            col("t.file_path_in_volume") == col("u.file_path_in_volume"),
+        ).whenMatchedUpdate(
+            set={
+                "business_unit": col("u.business_unit"),
+                "validation_status": col("u.validation_status"),
+                "rejection_reason": col("u.rejection_reason"),
+                "validation_errors_summary": col("u.validation_errors_summary"),
+                "rejection_explanation": col("u.rejection_explanation"),
+                "processed_at": col("u.processed_at"),
+                "processed_by_job_run_id": col("u.processed_by_job_run_id"),
+                "updated_at": col("u.updated_at"),
+            }
+        ).whenNotMatchedInsertAll().execute()
+
     def _validate_and_audit(
         self, volume_path: str, file_bytes: bytes, file_name: str
     ) -> tuple[bool, str]:
@@ -258,7 +279,7 @@ class DatabricksBackend(ClosureBackend):
                     "created_at": now,
                     "updated_at": now,
                 }
-                self.spark.createDataFrame([audit_row]).write.format("delta").mode("append").saveAsTable(audit_table)
+                self._upsert_audit_row(audit_table, audit_row)
                 return (True, f"Validated: invalid — read error. Audit updated.")
             finally:
                 if os.path.exists(tmp_path):
@@ -287,9 +308,9 @@ class DatabricksBackend(ClosureBackend):
                     "created_at": now,
                     "updated_at": now,
                 }
-                self.spark.createDataFrame([audit_row]).write.format("delta").mode("append").saveAsTable(audit_table)
+                self._upsert_audit_row(audit_table, audit_row)
                 return (True, f"Validated: invalid — {rejection_explanation[:200]}... Audit updated.")
-            # Valid: write audit row and append to closure_data
+            # Valid: upsert audit row (re-upload of corrected file updates same path) and append to closure_data
             audit_row = {
                 "file_name": file_name,
                 "file_path_in_volume": volume_path,
@@ -305,7 +326,7 @@ class DatabricksBackend(ClosureBackend):
                 "created_at": now,
                 "updated_at": now,
             }
-            self.spark.createDataFrame([audit_row]).write.format("delta").mode("append").saveAsTable(audit_table)
+            self._upsert_audit_row(audit_table, audit_row)
             pdf["source_file_name"] = file_name
             pdf["ingested_at"] = now
             if "value_date" in pdf.columns:
