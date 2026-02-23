@@ -73,111 +73,193 @@ st.set_page_config(
 
 st.markdown("""
 <style>
-    /* Fintech-inspired palette: deep navy, warm cream, teal accent */
+    /* Fintech UI: refined palette and typography */
     :root {
-        --bg-dark: #0f172a;
-        --bg-card: #1e293b;
-        --text-primary: #f8fafc;
+        --bg-dark: #0c1222;
+        --bg-card: #151d2e;
+        --bg-card-hover: #1a2438;
+        --text-primary: #f1f5f9;
         --text-muted: #94a3b8;
-        --accent: #14b8a6;
-        --accent-soft: rgba(20, 184, 166, 0.15);
-        --border: #334155;
-        --valid: #22c55e;
-        --rejected: #ef4444;
+        --accent: #0d9488;
+        --accent-light: #2dd4bf;
+        --accent-soft: rgba(13, 148, 136, 0.2);
+        --border: #2d3a4f;
+        --valid: #10b981;
+        --valid-soft: rgba(16, 185, 129, 0.15);
+        --rejected: #f43f5e;
+        --rejected-soft: rgba(244, 63, 94, 0.12);
+        --radius: 12px;
+        --radius-sm: 8px;
+        --shadow: 0 4px 14px rgba(0,0,0,0.25);
     }
-    .stApp { background: linear-gradient(180deg, #0f172a 0%, #1e293b 50%, #0f172a 100%); }
-    header[data-testid="stHeader"] { background: rgba(15, 23, 42, 0.9); }
-    .main .block-container { padding-top: 2rem; padding-bottom: 3rem; max-width: 1400px; }
-    
-    /* Title block */
+    .stApp {
+        background: linear-gradient(165deg, #0c1222 0%, #151d2e 40%, #0f172a 100%);
+        font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
+    }
+    header[data-testid="stHeader"] {
+        background: rgba(12, 18, 34, 0.92);
+        border-bottom: 1px solid var(--border);
+    }
+    .main .block-container {
+        padding-top: 2rem;
+        padding-bottom: 3rem;
+        max-width: 1440px;
+    }
+
+    /* Hero / title */
     .main-title {
-        font-family: 'Georgia', 'Cambria', serif;
-        font-size: 2.25rem;
+        font-family: 'DM Serif Display', 'Georgia', serif;
+        font-size: 2.5rem;
         font-weight: 600;
         color: var(--text-primary);
-        letter-spacing: -0.02em;
-        margin-bottom: 0.25rem;
+        letter-spacing: -0.03em;
+        margin-bottom: 0.35rem;
+        line-height: 1.2;
     }
     .main-subtitle {
-        font-size: 1rem;
+        font-size: 1.05rem;
         color: var(--text-muted);
         margin-bottom: 2rem;
+        line-height: 1.5;
+        max-width: 720px;
     }
-    
-    /* KPI cards */
+
+    /* KPI cards — elevated with hover */
     .kpi-card {
         background: var(--bg-card);
         border: 1px solid var(--border);
-        border-radius: 12px;
-        padding: 1.25rem 1.5rem;
+        border-radius: var(--radius);
+        padding: 1.35rem 1.5rem;
         text-align: center;
-        box-shadow: 0 4px 6px -1px rgba(0,0,0,0.2);
+        box-shadow: var(--shadow);
+        transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+    }
+    .kpi-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+        border-color: var(--accent);
     }
     .kpi-value {
-        font-size: 1.75rem;
+        font-size: 1.85rem;
         font-weight: 700;
         color: var(--accent);
+        letter-spacing: -0.02em;
     }
     .kpi-label {
-        font-size: 0.8rem;
+        font-size: 0.75rem;
         color: var(--text-muted);
         text-transform: uppercase;
-        letter-spacing: 0.05em;
-        margin-top: 0.25rem;
+        letter-spacing: 0.08em;
+        margin-top: 0.35rem;
     }
-    
-    /* Section headers */
+
+    /* Section headers with icon space */
     .section-title {
-        font-size: 1.25rem;
+        font-size: 1.2rem;
         font-weight: 600;
         color: var(--text-primary);
-        margin: 2rem 0 1rem 0;
-        padding-bottom: 0.5rem;
+        margin: 2.25rem 0 1rem 0;
+        padding-bottom: 0.6rem;
         border-bottom: 1px solid var(--border);
+        letter-spacing: -0.01em;
     }
-    
+
     /* Document flow pipeline */
     .flow-pipeline {
         display: flex;
         align-items: center;
-        gap: 0.5rem;
+        gap: 0.6rem;
         flex-wrap: wrap;
         margin: 1rem 0;
     }
     .flow-stage {
         background: var(--bg-card);
         border: 1px solid var(--border);
-        border-radius: 10px;
-        padding: 1rem 1.25rem;
-        min-width: 140px;
+        border-radius: var(--radius-sm);
+        padding: 1.1rem 1.35rem;
+        min-width: 130px;
         text-align: center;
+        transition: background 0.15s ease, border-color 0.15s ease;
     }
-    .flow-stage .flow-count { font-size: 1.5rem; font-weight: 700; color: var(--accent); }
-    .flow-stage .flow-label { font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; margin-top: 0.25rem; }
-    .flow-arrow { color: var(--text-muted); font-size: 1.25rem; }
-    
-    /* DataFrames: subtle dark table styling */
+    .flow-stage:hover {
+        background: var(--bg-card-hover);
+        border-color: var(--accent);
+    }
+    .flow-stage .flow-count { font-size: 1.6rem; font-weight: 700; letter-spacing: -0.02em; }
+    .flow-stage .flow-label { font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; margin-top: 0.3rem; }
+    .flow-arrow { color: var(--text-muted); font-size: 1.1rem; opacity: 0.8; }
+
+    /* DataFrames / tables */
     div[data-testid="stDataFrame"] {
-        border-radius: 8px;
+        border-radius: var(--radius-sm);
         overflow: hidden;
         border: 1px solid var(--border);
+        box-shadow: 0 2px 8px rgba(0,0,0,0.15);
     }
-    
+    div[data-testid="stDataFrame"] table { border-collapse: collapse; }
+    div[data-testid="stDataFrame"] th { background: var(--bg-card) !important; color: var(--text-primary) !important; font-weight: 600 !important; }
+    div[data-testid="stDataFrame"] td { border-color: var(--border) !important; }
+
     /* Sidebar */
     [data-testid="stSidebar"] {
-        background: linear-gradient(180deg, #1e293b 0%, #0f172a 100%);
+        background: linear-gradient(180deg, #151d2e 0%, #0c1222 100%);
+        border-right: 1px solid var(--border);
     }
-    [data-testid="stSidebar"] .stSelectbox label { color: var(--text-muted); }
-    
+    [data-testid="stSidebar"] .stSelectbox label,
+    [data-testid="stSidebar"] .stTextInput label { color: var(--text-muted) !important; }
+    [data-testid="stSidebar"] .stTextInput input { background: var(--bg-card) !important; border-color: var(--border) !important; color: var(--text-primary) !important; }
+
     /* Mock data banner */
     .mock-banner {
-        background: rgba(245, 158, 11, 0.15);
-        border: 1px solid rgba(245, 158, 11, 0.5);
-        border-radius: 8px;
-        padding: 0.75rem 1rem;
+        background: rgba(245, 158, 11, 0.12);
+        border: 1px solid rgba(245, 158, 11, 0.4);
+        border-radius: var(--radius-sm);
+        padding: 0.9rem 1.2rem;
         margin-bottom: 1.5rem;
         font-size: 0.9rem;
         color: #fcd34d;
+    }
+
+    /* Section container (optional wrapper) */
+    .section-wrap {
+        background: rgba(21, 29, 46, 0.5);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 1.25rem 1.5rem;
+        margin-bottom: 1.5rem;
+    }
+
+    /* Status badge style for tables */
+    .status-valid { color: var(--valid); font-weight: 600; }
+    .status-rejected { color: var(--rejected); font-weight: 600; }
+
+    /* Buttons: primary align with accent */
+    .stButton > button[kind="primary"] {
+        background: linear-gradient(135deg, var(--accent) 0%, #0f766e 100%) !important;
+        border: none !important;
+        font-weight: 600 !important;
+        border-radius: var(--radius-sm) !important;
+    }
+    .stButton > button[kind="primary"]:hover {
+        box-shadow: 0 4px 14px rgba(13, 148, 136, 0.4) !important;
+    }
+
+    /* Expander */
+    .streamlit-expanderHeader { background: var(--bg-card) !important; border-radius: var(--radius-sm) !important; }
+
+    /* Alerts (info, success, warning) */
+    [data-testid="stAlert"] {
+        border-radius: var(--radius-sm) !important;
+        border: 1px solid var(--border) !important;
+    }
+
+    /* Footer */
+    .app-footer {
+        margin-top: 3rem;
+        padding-top: 1.5rem;
+        border-top: 1px solid var(--border);
+        font-size: 0.8rem;
+        color: var(--text-muted);
     }
 </style>
 """, unsafe_allow_html=True)
@@ -191,9 +273,10 @@ def _models_to_dataframe(items: list, columns: list[str], row_to_list):
 
 
 def main():
-    # Sidebar: filters
+    # Sidebar: filters and branding
     with st.sidebar:
-        st.markdown("### **Filters**")
+        st.markdown("### 📋 Filters")
+        st.caption("Catalog, schema, and period for closure data.")
         catalog = st.text_input(
             "Catalog",
             value=os.environ.get("CLOSURE_CATALOG", "getnet_closure_dev"),
@@ -213,8 +296,8 @@ def main():
             placeholder="raw_closure_files",
         )
         st.markdown("---")
-        st.caption("Getnet Financial Closure · Data from backend (UC or mock)")
-        st.caption("Pipeline automates: Ingest → Validate → Reject to review → Global send.")
+        st.markdown("**Getnet Financial Closure**")
+        st.caption("Data from Unity Catalog or mock. Pipeline: Ingest → Validate → Reject → Global send.")
 
     with st.spinner("Loading closure data..."):
         (
@@ -234,13 +317,13 @@ def main():
     # Title
     st.markdown('<p class="main-title">Getnet Financial Closure</p>', unsafe_allow_html=True)
     st.markdown(
-        '<p class="main-subtitle">Automate financial closure: accelerate approval, reduce manual steps — document flow, validation, and global send</p>',
+        '<p class="main-subtitle">Succeeded and failed files, dashboards, and inline fix for invalid files</p>',
         unsafe_allow_html=True,
     )
 
     if not use_real_data:
         st.markdown(
-            '<div class="mock-banner">📌 Using mock data — run this app on Databricks with Spark to load from Unity Catalog.</div>',
+            '<div class="mock-banner">📌 No mock data in production. On Databricks, this app reads files from the volume and updates the audit and closure tables. Run this app on Databricks to load from Unity Catalog.</div>',
             unsafe_allow_html=True,
         )
 
@@ -299,7 +382,7 @@ def main():
         )
 
     # Document flow — automated pipeline visibility
-    st.markdown('<p class="section-title">Document flow (automated pipeline)</p>', unsafe_allow_html=True)
+    st.markdown('<p class="section-title">📊 Document flow (automated pipeline)</p>', unsafe_allow_html=True)
     if flow.stages:
         stages_html = []
         for i, s in enumerate(flow.stages):
@@ -318,7 +401,7 @@ def main():
         st.info("No document flow data yet. Run the pipeline job (Ingest → Validate and load) or upload files to populate.")
 
     # All files (audit) — one table valid + invalid, download, fix options, Send to review
-    st.markdown('<p class="section-title">All files (audit)</p>', unsafe_allow_html=True)
+    st.markdown('<p class="section-title">📁 All files (audit)</p>', unsafe_allow_html=True)
     if audit_files:
         def _row_list(a: AuditFileRow):
             reason = (a.rejection_explanation or a.rejection_reason or "")[:80]
@@ -341,9 +424,10 @@ def main():
         st.dataframe(df_audit, use_container_width=True, hide_index=True)
         # Download per row (only when real backend and path available). Limit to 25 files to avoid slow loads.
         if use_real_data:
-            st.caption("Download a file to fix locally, then re-upload using **Upload Excel to raw volume** above.")
+            st.caption("Download a file to fix locally, then re-upload via **Upload Excel to raw volume** above.")
             backend, _ = get_backend(catalog.strip(), schema.strip(), period.strip())
             max_downloads = 25
+            download_items = []
             for i, a in enumerate(audit_files):
                 if i >= max_downloads:
                     break
@@ -351,18 +435,23 @@ def main():
                     continue
                 ok, data, msg = backend.get_file_bytes_from_volume(a.file_path_in_volume)
                 if ok and data:
-                    st.download_button(
-                        label=f"Download {a.file_name}",
-                        data=data,
-                        file_name=a.file_name,
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                        key=f"dl_{a.file_path_in_volume.replace('/', '_')}",
-                    )
+                    download_items.append((a.file_name, data, a.file_path_in_volume))
+            if download_items:
+                cols = st.columns(min(4, len(download_items)))
+                for idx, (fname, data, path) in enumerate(download_items):
+                    with cols[idx % len(cols)]:
+                        st.download_button(
+                            label=f"⬇ {fname[:24]}{'…' if len(fname) > 24 else ''}",
+                            data=data,
+                            file_name=fname,
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                            key=f"dl_{path.replace('/', '_')}",
+                        )
             if len(audit_files) > max_downloads:
-                st.caption(f"Download buttons shown for the most recent {max_downloads} files. Use volume path to access others.")
-        st.markdown("**How to fix invalid files:**")
-        st.markdown("- **Option 1 (recommended):** Download the file above → fix it locally (use **Error analysis** for row/field/cause) → re-upload in **Upload Excel to raw volume**. Re-uploading the same file updates the audit row (no duplicate); if valid, data is loaded.")
-        st.markdown("- **Option 2:** Use **Send to review** below (or run job **Reject to SharePoint**) to move invalid files to the review folder; fix and re-submit from there, then run **Validate and load** or re-upload in the app.")
+                st.caption(f"Showing download for the most recent {max_downloads} files.")
+        with st.expander("ℹ️ How to fix invalid files", expanded=False):
+            st.markdown("**Option 1 (recommended):** Download the file above → fix locally using **Error analysis** (row/field/cause) → re-upload in **Upload Excel to raw volume**. Same file re-upload updates the audit row; if valid, data is loaded.")
+            st.markdown("**Option 2:** Use **Send to review** below (or job **Reject to SharePoint**) to move invalid files to the review folder; fix and re-submit, then run **Validate and load** or re-upload in the app.")
     else:
         st.caption("No audit rows for the selected period. Upload files above or run the pipeline job (Ingest → Validate and load) to automate.")
 
@@ -378,7 +467,7 @@ def main():
         st.caption("One click moves all pending invalid files to the review folder — no manual upload to SharePoint.")
 
     # Closure by business unit
-    st.markdown('<p class="section-title">Closure by business unit</p>', unsafe_allow_html=True)
+    st.markdown('<p class="section-title">📈 Closure by business unit</p>', unsafe_allow_html=True)
     if closure_by_bu:
         df_bu = _models_to_dataframe(
             closure_by_bu,
@@ -399,13 +488,14 @@ def main():
                     color_continuous_scale="Teal",
                 )
                 fig.update_layout(
-                    margin=dict(l=20, r=20, t=30, b=20),
+                    margin=dict(l=20, r=20, t=28, b=20),
                     paper_bgcolor="rgba(0,0,0,0)",
-                    plot_bgcolor="rgba(0,0,0,0)",
-                    font=dict(color="#f8fafc"),
+                    plot_bgcolor="rgba(21,29,46,0.4)",
+                    font=dict(color="#f1f5f9", family="Inter, system-ui, sans-serif"),
                     showlegend=False,
-                    xaxis=dict(gridcolor="rgba(148,163,184,0.2)"),
-                    yaxis=dict(gridcolor="rgba(148,163,184,0.2)"),
+                    xaxis=dict(gridcolor="rgba(148,163,184,0.15)", zeroline=False),
+                    yaxis=dict(gridcolor="rgba(148,163,184,0.15)", zeroline=False),
+                    bargap=0.35,
                 )
                 st.plotly_chart(fig, use_container_width=True)
             else:
@@ -416,7 +506,7 @@ def main():
         st.info("No closure data for the selected filters.")
 
     # Error analysis — high value for fixing rejections and accelerating approval
-    st.markdown('<p class="section-title">Error analysis (validation failures)</p>', unsafe_allow_html=True)
+    st.markdown('<p class="section-title">🔍 Error analysis (validation failures)</p>', unsafe_allow_html=True)
     if err_summary.by_field_and_cause:
         df_err = _models_to_dataframe(
             err_summary.by_field_and_cause,
@@ -429,7 +519,7 @@ def main():
         st.success("No validation errors in the selected period. Pipeline can proceed with minimal intervention.")
 
     # Closure health (SLA + quality)
-    st.markdown('<p class="section-title">Closure health</p>', unsafe_allow_html=True)
+    st.markdown('<p class="section-title">❤️ Closure health</p>', unsafe_allow_html=True)
     if sla_list:
         def _sla_row(x):
             return [
@@ -455,7 +545,7 @@ def main():
         st.info("Run the **closure_sla_quality** job to populate closure health automatically. No data yet.")
 
     # Validation status by business unit
-    st.markdown('<p class="section-title">Validation status by business unit</p>', unsafe_allow_html=True)
+    st.markdown('<p class="section-title">✅ Validation status by business unit</p>', unsafe_allow_html=True)
     if audit_list:
         df_audit = _models_to_dataframe(
             audit_list,
@@ -472,7 +562,7 @@ def main():
         st.info("No audit data for the selected filters. Upload files or run the pipeline to see validation status by BU.")
 
     # Global financial closure sent
-    st.markdown('<p class="section-title">Global financial closure sent</p>', unsafe_allow_html=True)
+    st.markdown('<p class="section-title">📤 Global financial closure sent</p>', unsafe_allow_html=True)
     if global_sent:
         df_global = _models_to_dataframe(
             global_sent,
@@ -489,7 +579,7 @@ def main():
         st.info("No global closure send log yet. Run the **global_closure_send** job (or full pipeline) to automate the send.")
 
     # Rejected files — fix or send to review to unblock approval
-    st.markdown('<p class="section-title">Rejected files (need review)</p>', unsafe_allow_html=True)
+    st.markdown('<p class="section-title">⚠️ Rejected files (need review)</p>', unsafe_allow_html=True)
     if rejected:
         df_rej = _models_to_dataframe(
             rejected,
@@ -508,6 +598,12 @@ def main():
 
     st.sidebar.markdown("---")
     st.sidebar.caption("Built for Getnet · Databricks · Backend + Pydantic")
+
+    # Footer
+    st.markdown(
+        '<div class="app-footer">Getnet Financial Closure · Automate approval and reduce manual steps</div>',
+        unsafe_allow_html=True,
+    )
 
 
 if __name__ == "__main__":

@@ -1,7 +1,8 @@
 # Databricks notebook source
 # MAGIC %md
 # MAGIC # Job 2: Validate and Load
-# MAGIC **File-level audit**: Each Excel file is treated as a single unit. If any row or value is missing or wrong, the **whole file** is flagged invalid, the audit row stores date and reason (errors detected), and the file is sent back to BUs (via Job 3). Only **perfect** files are marked valid and loaded into closure_data.
+# MAGIC **Read files from volume** (no mock). For each file: run **validation in memory** (as fast as possible), register result in **audit table**; if any rule fails flag as **invalid**; if all pass flag as **valid** and upload rows to **closure_data** with **BU/source info** (source_file_name, business_unit, etc.) to identify data source.
+# MAGIC **File-level audit**: One bad row or value → whole file invalid; only perfect files are loaded into closure_data.
 
 # COMMAND ----------
 
@@ -128,6 +129,7 @@ for file_path in to_process:
             "updated_at": now,
         })
         continue
+    # In-memory validation (fast); result registered in audit; valid rows uploaded to closure_data with BU/source
     errors = validate_dataframe(pdf, columns_config, max_errors_per_file)
     if errors:
         # Human-readable summary for BUs (first 5 errors + total)

@@ -4,6 +4,19 @@ The financial closure process **tracks and audits each Excel file as a single un
 
 ---
 
+## Data source: no mock in production
+
+When the app and jobs run **on Databricks**, all data is read from the **volume** and from **Unity Catalog tables** (`closure_file_audit`, `closure_data`). **No mock data** is used in production.
+
+1. **Files arrive in the volume** (via SharePoint ingest job or app upload).
+2. **Validation is triggered** (by the **Validate and load** job after ingest, or immediately on app upload).
+3. **Validation runs in memory** (pandas + `validator.validate_dataframe`) for speed; no extra I/O beyond reading the file once.
+4. **Result is registered in the audit table** (`closure_file_audit`): one row per file with `validation_status`, `processed_at`, and, if invalid, `rejection_reason` / `validation_errors_summary`.
+5. **If any rule fails** → file is **flagged as invalid** (`validation_status = 'rejected'`); no rows are loaded.
+6. **If all rules pass** → file is **flagged as valid** and its rows are **written to the financial closure raw table** (`closure_data`) with **BU and source info** (`source_file_name`, `business_unit`, `closure_period`, etc.) so the data source is identifiable.
+
+---
+
 ## Rules
 
 | Case | Result | What happens |

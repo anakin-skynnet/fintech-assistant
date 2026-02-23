@@ -86,6 +86,14 @@ class ClosureBackend(ABC):
         """Return (success, bytes_or_none, message). For download. Default: (False, None, msg)."""
         return (False, None, "Download only available when the app runs on Databricks.")
 
+    def get_file_data_for_edit(self, volume_path: str) -> tuple[bool, Optional[list], str]:
+        """Load Excel from volume as list of row dicts for inline editing. Returns (success, data_or_none, message)."""
+        return (False, None, "Edit only available when the app runs on Databricks.")
+
+    def save_edited_file_and_validate(self, volume_path: str, file_name: str, file_bytes: bytes) -> tuple[bool, str]:
+        """Overwrite file at volume_path with file_bytes and re-run validation. Returns (success, message)."""
+        return (False, "Save only available when the app runs on Databricks.")
+
     def move_rejected_to_sharepoint(self, secret_scope: str = "getnet-sharepoint") -> tuple[int, str]:
         """Move rejected files (not yet moved) to SharePoint review folder. Returns (count_moved, message)."""
         return (0, "Only available when the app runs on Databricks with SharePoint secrets.")
@@ -205,7 +213,7 @@ class DatabricksBackend(ClosureBackend):
                     os.unlink(tmp_path)
                 except Exception:
                     pass
-        # Trigger validation and update audit table (same as Validate and Load job)
+        # Trigger in-memory validation and update audit table; if valid, append to closure_data with BU/source (no mock — real volume + tables)
         ok_validate, msg_validate = self._validate_and_audit(volume_path, file_bytes, safe_name)
         return (True, f"Saved to {volume_path}. {msg_validate}")
 
@@ -233,7 +241,8 @@ class DatabricksBackend(ClosureBackend):
     def _validate_and_audit(
         self, volume_path: str, file_bytes: bytes, file_name: str
     ) -> tuple[bool, str]:
-        """Run validation in memory (pandas + validator) for speed; update closure_file_audit and closure_data if valid.
+        """Run validation in memory (pandas + validator) as fast as possible. Register result in audit table;
+        if any rule fails flag as invalid; if all pass flag as valid and upload rows to closure_data with BU/source info.
         Returns (True, status_message) e.g. 'Validated: valid' or 'Validated: invalid — reason'."""
         import json
         import tempfile
@@ -327,6 +336,7 @@ class DatabricksBackend(ClosureBackend):
                 "updated_at": now,
             }
             self._upsert_audit_row(audit_table, audit_row)
+            # Upload to financial closure raw table with BU/source so data source is identifiable
             pdf["source_file_name"] = file_name
             pdf["ingested_at"] = now
             if "value_date" in pdf.columns:
@@ -502,6 +512,52 @@ class DatabricksBackend(ClosureBackend):
             return (True, data, "OK")
         except Exception as e:
             return (False, None, str(e))
+        finally:
+            if tmp_path and os.path.exists(tmp_path):
+                try:
+                    os.unlink(tmp_path)
+                except Exception:
+                    pass
+
+    def get_file_data_for_edit(self, volume_path: str) -> tuple[bool, Optional[list], str]:
+        """Load Excel from volume as list of row dicts for inline editing."""
+        ok, content, msg = self.get_file_bytes_from_volume(volume_path)
+        if not ok or content is None:
+            return (False, None, msg or "Could not read file.")
+        try:
+            from io import BytesIO
+            df = pd.read_excel(BytesIO(content), sheet_name=0, header=0)
+            # Serialize for JSON/Streamlit: datetime -> str, NaN -> None
+            df = df.where(pd.notnull(df), None)
+            for col in df.columns:
+                if pd.api.types.is_datetime64_any_dtype(df[col]):
+                    df[col] = df[col].astype("datetime64[ns]").dt.strftime("%Y-%m-%d")
+            return (True, df.to_dict("records"), "OK")
+        except Exception as e:
+            return (False, None, str(e))
+
+    def save_edited_file_and_validate(self, volume_path: str, file_name: str, file_bytes: bytes) -> tuple[bool, str]:
+        """Overwrite file at volume_path with file_bytes and re-run validation."""
+        import tempfile
+        try:
+            from pyspark.dbutils import DBUtils
+            dbutils = DBUtils(self.spark)
+        except Exception as e:
+            return (False, str(e))
+        tmp_path = None
+        try:
+            with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(file_name)[1]) as tmp:
+                tmp.write(file_bytes)
+                tmp_path = tmp.name
+            try:
+                dbutils.fs.rm(volume_path)
+            except Exception:
+                pass
+            dbutils.fs.cp(f"file:{tmp_path}", volume_path)
+            ok, msg = self._validate_and_audit(volume_path, file_bytes, file_name)
+            return (ok, msg)
+        except Exception as e:
+            return (False, str(e))
         finally:
             if tmp_path and os.path.exists(tmp_path):
                 try:
@@ -813,6 +869,12 @@ class MockBackend(ClosureBackend):
 
     def move_rejected_to_sharepoint(self, secret_scope: str = "getnet-sharepoint") -> tuple[int, str]:
         return (0, "Only available when the app runs on Databricks with SharePoint secrets.")
+
+    def get_file_data_for_edit(self, volume_path: str) -> tuple[bool, Optional[list], str]:
+        return (False, None, "Edit only available when the app runs on Databricks.")
+
+    def save_edited_file_and_validate(self, volume_path: str, file_name: str, file_bytes: bytes) -> tuple[bool, str]:
+        return (False, "Save only available when the app runs on Databricks.")
 
 
 def get_backend(catalog: str, schema: str, period: Optional[str] = None) -> tuple[ClosureBackend, bool]:
