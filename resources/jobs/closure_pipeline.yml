@@ -8,6 +8,7 @@ resources:
       max_concurrent_runs: 1
       tasks:
         - task_key: ingest
+          timeout_seconds: 1800
           notebook_task:
             notebook_path: ../../src/notebooks/ingest_sharepoint.py
             source: WORKSPACE
@@ -37,6 +38,7 @@ resources:
         - task_key: validate_and_load
           depends_on:
             - task_key: ingest
+          timeout_seconds: 1800
           notebook_task:
             notebook_path: ../../src/notebooks/validate_and_load.py
             source: WORKSPACE
@@ -68,6 +70,7 @@ resources:
         - task_key: agent_rejection_explanation
           depends_on:
             - task_key: validate_and_load
+          timeout_seconds: 900
           notebook_task:
             notebook_path: ../../src/notebooks/agent_rejection_explanation.py
             source: WORKSPACE
@@ -91,6 +94,7 @@ resources:
         - task_key: reject_to_sharepoint
           depends_on:
             - task_key: agent_rejection_explanation
+          timeout_seconds: 1800
           notebook_task:
             notebook_path: ../../src/notebooks/reject_to_sharepoint.py
             source: WORKSPACE
@@ -120,6 +124,7 @@ resources:
         - task_key: notify_bu_on_rejection
           depends_on:
             - task_key: reject_to_sharepoint
+          timeout_seconds: 900
           notebook_task:
             notebook_path: ../../src/notebooks/notify_bu_on_rejection.py
             source: WORKSPACE
@@ -129,6 +134,8 @@ resources:
           libraries:
             - pypi:
                 package: pyyaml
+            - pypi:
+                package: requests
           new_cluster:
             spark_version: "13.3.x-scala2.12"
             node_type_id: "Standard_DS3_v2"
@@ -146,6 +153,7 @@ resources:
         - task_key: global_closure_send
           depends_on:
             - task_key: notify_bu_on_rejection
+          timeout_seconds: 1800
           notebook_task:
             notebook_path: ../../src/notebooks/global_closure_send.py
             source: WORKSPACE

@@ -17,8 +17,12 @@ dbutils.widgets.text("schema", "financial_closure", "Schema")
 
 # COMMAND ----------
 
-catalog = dbutils.widgets.get("catalog")
-schema = dbutils.widgets.get("schema")
+import sys
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "python"))
+from notebook_utils import safe_catalog, safe_schema, log
+
+catalog = safe_catalog(dbutils.widgets.get("catalog"))
+schema = safe_schema(dbutils.widgets.get("schema"))
 full_schema = f"{catalog}.{schema}"
 audit_table = f"{full_schema}.closure_file_audit"
 
@@ -44,7 +48,7 @@ rejected = spark.sql(f"""
 """).collect()
 
 if not rejected:
-    print("No rejected files needing explanation.")
+    log("AGENT", "No rejected files needing explanation.")
     dbutils.notebook.exit("0")
 
 # COMMAND ----------
@@ -59,7 +63,7 @@ def generate_explanation(errors_json: str) -> str:
         )
         return (reply.choices[0].message.content or "").strip() if reply.choices else ""
     except Exception as e:
-        print(f"LLM call failed ({e}), using fallback.")
+        log("AGENT", "LLM call failed, using fallback:", e)
     # Fallback: parse JSON and format bullets
     try:
         errs = json.loads(errors_json) if errors_json else []
@@ -108,4 +112,4 @@ spark.sql(f"""
 
 # COMMAND ----------
 
-print(f"Updated rejection_explanation for {len(updates)} file(s).")
+log("AGENT", f"Updated rejection_explanation for {len(updates)} file(s).")

@@ -5,6 +5,7 @@
 
 # COMMAND ----------
 
+import os
 from datetime import datetime
 
 # COMMAND ----------
@@ -15,9 +16,13 @@ dbutils.widgets.text("period", "", "Period (yyyy-MM); empty = current month")
 
 # COMMAND ----------
 
-catalog = dbutils.widgets.get("catalog")
-schema = dbutils.widgets.get("schema")
-period = dbutils.widgets.get("period").strip() or datetime.utcnow().strftime("%Y-%m")
+import sys
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "python"))
+from notebook_utils import safe_catalog, safe_schema, log
+
+catalog = safe_catalog(dbutils.widgets.get("catalog"))
+schema = safe_schema(dbutils.widgets.get("schema"))
+period = (dbutils.widgets.get("period") or "").strip() or datetime.utcnow().strftime("%Y-%m")
 full_schema = f"{catalog}.{schema}"
 audit_table = f"{full_schema}.closure_file_audit"
 errors_view = f"{full_schema}.closure_audit_errors"
@@ -56,7 +61,7 @@ spark.sql(f"""
   WHEN MATCHED THEN UPDATE SET *
   WHEN NOT MATCHED THEN INSERT *
 """)
-print(f"SLA metrics written for {period}.")
+log("SLA", f"SLA metrics written for {period}.")
 
 # COMMAND ----------
 
@@ -107,4 +112,4 @@ spark.sql(f"""
   WHEN MATCHED THEN UPDATE SET *
   WHEN NOT MATCHED THEN INSERT *
 """)
-print(f"Quality summary: {period} — valid {pct_valid:.1f}%, rejected {pct_rejected:.1f}%.")
+log("SLA", f"Quality summary: {period} — valid {pct_valid:.1f}%, rejected {pct_rejected:.1f}%.")

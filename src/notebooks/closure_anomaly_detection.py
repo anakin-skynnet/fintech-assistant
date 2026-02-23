@@ -5,6 +5,7 @@
 
 # COMMAND ----------
 
+import os
 from datetime import datetime
 
 # COMMAND ----------
@@ -15,9 +16,13 @@ dbutils.widgets.text("variance_pct_threshold", "15", "Variance % to flag (e.g. 1
 
 # COMMAND ----------
 
-catalog = dbutils.widgets.get("catalog")
-schema = dbutils.widgets.get("schema")
-threshold_pct = float(dbutils.widgets.get("variance_pct_threshold"))
+import sys
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "python"))
+from notebook_utils import safe_catalog, safe_schema, log
+
+catalog = safe_catalog(dbutils.widgets.get("catalog"))
+schema = safe_schema(dbutils.widgets.get("schema"))
+threshold_pct = float(dbutils.widgets.get("variance_pct_threshold") or "15")
 full_schema = f"{catalog}.{schema}"
 closure_table = f"{full_schema}.closure_data"
 anomalies_table = f"{full_schema}.closure_anomalies"
@@ -88,6 +93,6 @@ for bu, (curr_amt, curr_cnt) in current_by_bu.items():
 
 if anomaly_rows:
     spark.createDataFrame(anomaly_rows).write.format("delta").mode("append").saveAsTable(anomalies_table)
-    print(f"Wrote {len(anomaly_rows)} anomaly row(s) for {current_period}.")
+    log("ANOMALY", f"Wrote {len(anomaly_rows)} anomaly row(s) for {current_period}.")
 else:
-    print(f"No anomalies for {current_period} (threshold {threshold_pct}%).")
+    log("ANOMALY", f"No anomalies for {current_period} (threshold {threshold_pct}%).")

@@ -19,11 +19,15 @@ dbutils.widgets.text("value_date", "", "Value date yyyy-MM-dd (empty = today)")
 
 # COMMAND ----------
 
-catalog = dbutils.widgets.get("catalog")
-schema = dbutils.widgets.get("schema")
-volume_raw = dbutils.widgets.get("volume_raw")
+import sys
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "python"))
+from notebook_utils import safe_catalog, safe_schema, log
+
+catalog = safe_catalog(dbutils.widgets.get("catalog"))
+schema = safe_schema(dbutils.widgets.get("schema"))
+volume_raw = (dbutils.widgets.get("volume_raw") or "raw_closure_files").strip()
 bus_str = dbutils.widgets.get("bus")
-rows_per_file = int(dbutils.widgets.get("rows_per_file") or "5")
+rows_per_file = max(1, min(1000, int(dbutils.widgets.get("rows_per_file") or "5")))
 value_date_str = dbutils.widgets.get("value_date").strip()
 
 bus_list = [b.strip() for b in bus_str.split(",") if b.strip()]
@@ -74,8 +78,8 @@ for bu in bus_list:
     except Exception:
         pass
     created.append(volume_path)
-    print(f"Created {volume_path}")
+    log("BOOTSTRAP", f"Created {volume_path}")
 
 # COMMAND ----------
 
-print(f"Demo bootstrap done: {len(created)} file(s) in {volume_folder}. Run Validate and load or the full pipeline next.")
+log("BOOTSTRAP", f"Done: {len(created)} file(s) in {volume_folder}. Run Validate and load or the full pipeline next.")

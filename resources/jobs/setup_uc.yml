@@ -7,6 +7,7 @@ resources:
       description: "Create schema, volume, audit table, closure table, and audit_errors view. Run once per environment."
       tasks:
         - task_key: "setup"
+          timeout_seconds: 900
           notebook_task:
             notebook_path: ../../src/notebooks/setup_uc.py
             source: WORKSPACE

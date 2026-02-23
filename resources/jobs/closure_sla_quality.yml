@@ -5,6 +5,7 @@ resources:
       description: "Computes closure_sla_metrics and closure_quality_summary for closure health."
       tasks:
         - task_key: sla_quality
+          timeout_seconds: 1800
           notebook_task:
             notebook_path: ../../src/notebooks/closure_sla_quality.py
             source: WORKSPACE

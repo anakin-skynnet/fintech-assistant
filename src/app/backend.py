@@ -25,6 +25,7 @@ from models import (
     ErrorAnalysisSummary,
     ErrorCauseCount,
     GlobalClosureSent,
+    PipelineRunStatus,
     RejectedFile,
 )
 
@@ -81,6 +82,10 @@ class ClosureBackend(ABC):
     def get_all_audit_files(self) -> list[AuditFileRow]:
         """All audit rows (valid + invalid) for the audit table in the app. Default: empty."""
         return []
+
+    def get_pipeline_status(self) -> PipelineRunStatus:
+        """Last closure pipeline run status (BU → Global). Default: neutral when not available."""
+        return PipelineRunStatus(state="UNKNOWN", message="Pipeline status available when running on Databricks.")
 
     def get_file_bytes_from_volume(self, volume_path: str) -> tuple[bool, bytes | None, str]:
         """Return (success, bytes_or_none, message). For download. Default: (False, None, msg)."""
@@ -729,6 +734,22 @@ class DatabricksBackend(ClosureBackend):
         except Exception:
             return []
 
+    def get_pipeline_status(self) -> PipelineRunStatus:
+        """Pipeline (BU → Global) run status. When no run table exists, return neutral status."""
+        try:
+            # Optional: read from a table if closure_pipeline_runs exists (e.g. updated by pipeline job)
+            self.spark.sql(f"SELECT 1 FROM {self.full_schema}.closure_file_audit LIMIT 1").collect()
+            return PipelineRunStatus(
+                job_name="closure_pipeline",
+                state="AVAILABLE",
+                message="Pipeline runs via Workflows → Jobs. Check 'Getnet Closure - Full Pipeline' for last run.",
+            )
+        except Exception:
+            return PipelineRunStatus(
+                state="UNKNOWN",
+                message="Pipeline status: run closure_pipeline job from Workflows.",
+            )
+
 
 def _mock_kpis() -> ClosureKPIs:
     return ClosureKPIs(
@@ -806,6 +827,19 @@ def _mock_quality() -> list[ClosureQualitySummary]:
     ]
 
 
+def _mock_pipeline_status() -> PipelineRunStatus:
+    return PipelineRunStatus(
+        job_name="closure_pipeline",
+        run_id="mock-run-001",
+        state="TERMINATED",
+        result_state="SUCCESS",
+        start_time=datetime(2025, 2, 20, 7, 0),
+        end_time=datetime(2025, 2, 20, 7, 12),
+        duration_seconds=720.0,
+        message="Sample: Ingest → Validate → Reject → Notify BU → Global send.",
+    )
+
+
 def _mock_audit_files() -> list[AuditFileRow]:
     return [
         AuditFileRow(
@@ -863,6 +897,9 @@ class MockBackend(ClosureBackend):
 
     def get_all_audit_files(self) -> list[AuditFileRow]:
         return _mock_audit_files()
+
+    def get_pipeline_status(self) -> PipelineRunStatus:
+        return _mock_pipeline_status()
 
     def get_file_bytes_from_volume(self, volume_path: str) -> tuple[bool, Optional[bytes], str]:
         return (False, None, "Download only available when the app runs on Databricks.")

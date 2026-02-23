@@ -21,7 +21,7 @@ Databricks Asset Bundle that automates the Getnet financial closure process: ing
 
 **Enrichment & automation** — **[docs/REDESIGN_AND_ENRICHMENT.md](docs/REDESIGN_AND_ENRICHMENT.md)** summarizes the **full workflow** (BU drops in SharePoint → reviewer reviews → wrong files to BU → correction → approval → orchestrator creates global report → notify global team), **what was redone** (approval gate, global-team notification, recipients log), **how to enrich** in Databricks (insights, intelligence), and **how to automate** to avoid human intervention. See also **[docs/WORKFLOW_ENRICHMENT_AND_AUTOMATION.md](docs/WORKFLOW_ENRICHMENT_AND_AUTOMATION.md)** and **[docs/ENRICHMENT_AND_AUTOMATION_ROADMAP.md](docs/ENRICHMENT_AND_AUTOMATION_ROADMAP.md)** for detailed roadmaps. **[docs/FINANCIAL_CLOSURE_OPTIMIZATION_RECOMMENDATIONS.md](docs/FINANCIAL_CLOSURE_OPTIMIZATION_RECOMMENDATIONS.md)** focuses on minimizing human intervention with agents (rejection explanation, notify BU, Teams) and the full pipeline order.
 
-**Testing** — See **[docs/TESTING.md](docs/TESTING.md)** for local validation, deployed app checks, end-to-end flow, and a value/insights checklist.
+**Testing** — See **[docs/TESTING.md](docs/TESTING.md)** for local validation, deployed app checks, end-to-end flow, and a value/insights checklist. **Databricks MCP** — See **[docs/DATABRICKS_MCP.md](docs/DATABRICKS_MCP.md)** for using MCP tools (execute_sql, manage_job_runs, volume APIs) to fetch data and drive the closure pipeline from the IDE.
 
 **Get started** — See **[docs/GET_STARTED_RUNBOOK.md](docs/GET_STARTED_RUNBOOK.md)** for the **order of jobs to execute**, step-by-step setup (deploy → UC setup → upload test files → run jobs), and a minimal test without SharePoint/email.
 

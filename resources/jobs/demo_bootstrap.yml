@@ -7,6 +7,7 @@ resources:
       description: "Creates valid sample closure Excel files in the raw volume for demo/e2e. Run after UC Setup."
       tasks:
         - task_key: "bootstrap"
+          timeout_seconds: 900
           notebook_task:
             notebook_path: ../../src/notebooks/demo_bootstrap.py
             source: WORKSPACE

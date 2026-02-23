@@ -1,8 +1,8 @@
 # Databricks notebook source
 # MAGIC %md
 # MAGIC # Job 2: Validate and Load
-# MAGIC **Read files from volume** (no mock). For each file: run **validation in memory** (as fast as possible), register result in **audit table**; if any rule fails flag as **invalid**; if all pass flag as **valid** and upload rows to **closure_data** with **BU/source info** (source_file_name, business_unit, etc.) to identify data source.
-# MAGIC **File-level audit**: One bad row or value → whole file invalid; only perfect files are loaded into closure_data.
+# MAGIC **Read files from volume** (no mock). For each file: run **validation in memory**, register result in **audit table**; if any rule fails flag as **invalid**; if all pass flag as **valid** and upload rows to **closure_data**.
+# MAGIC **File-level audit**: One bad row or value → whole file invalid; only perfect files are loaded. Idempotent: re-processes rejected files on re-run.
 
 # COMMAND ----------
 
@@ -20,19 +20,19 @@ dbutils.widgets.text("config_path", "", "Optional: path to closure_schema.yaml (
 
 # COMMAND ----------
 
-catalog = dbutils.widgets.get("catalog")
-schema = dbutils.widgets.get("schema")
-volume_raw = dbutils.widgets.get("volume_raw")
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "python"))
+from notebook_utils import safe_catalog, safe_schema, get_run_id, log
+
+catalog = safe_catalog(dbutils.widgets.get("catalog"))
+schema = safe_schema(dbutils.widgets.get("schema"))
+volume_raw = (dbutils.widgets.get("volume_raw") or "raw_closure_files").strip()
 config_path = dbutils.widgets.get("config_path")
 
 volume_base = f"/Volumes/{catalog}/{schema}/{volume_raw}"
 full_schema = f"{catalog}.{schema}"
 audit_table = f"{full_schema}.closure_file_audit"
 closure_table = f"{full_schema}.closure_data"
-try:
-    run_id = dbutils.notebook.entry_point.getDbutils().notebook().getContext().currentRunId().get()
-except Exception:
-    run_id = f"run-{datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
+run_id = get_run_id()
 
 # COMMAND ----------
 
@@ -63,9 +63,14 @@ max_errors_per_file = 100
 # COMMAND ----------
 
 # List files already in audit (processed) and which are rejected (eligible for re-ingestion)
-audit_df = spark.table(audit_table)
-processed_paths = {row.file_path_in_volume for row in audit_df.select("file_path_in_volume").collect()}
-rejected_paths = {row.file_path_in_volume for row in audit_df.filter("validation_status = 'rejected'").select("file_path_in_volume").collect()}
+try:
+    audit_df = spark.table(audit_table)
+    processed_paths = {row.file_path_in_volume for row in audit_df.select("file_path_in_volume").collect()}
+    rejected_paths = {row.file_path_in_volume for row in audit_df.filter("validation_status = 'rejected'").select("file_path_in_volume").collect()}
+except Exception as e:
+    log("VALIDATE", "Audit table not found or empty, processing all files:", e)
+    processed_paths = set()
+    rejected_paths = set()
 
 # COMMAND ----------
 
@@ -216,4 +221,4 @@ for pdf in closure_dfs:
 
 # COMMAND ----------
 
-print(f"Processed {len(to_process)} file(s). Audit rows: {len(audit_rows)}. Valid files loaded: {len(closure_dfs)}")
+log("VALIDATE", f"Processed {len(to_process)} file(s). Audit rows: {len(audit_rows)}. Valid files loaded: {len(closure_dfs)}")

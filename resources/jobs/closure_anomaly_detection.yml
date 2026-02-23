@@ -5,6 +5,7 @@ resources:
       description: "Compares current vs prior period; writes closure_anomalies for variance above threshold."
       tasks:
         - task_key: anomaly
+          timeout_seconds: 1800
           notebook_task:
             notebook_path: ../../src/notebooks/closure_anomaly_detection.py
             source: WORKSPACE

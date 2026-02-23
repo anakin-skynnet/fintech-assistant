@@ -23,11 +23,15 @@ dbutils.widgets.text("teams_webhook_url", "", "Optional: Teams incoming webhook 
 
 # COMMAND ----------
 
-catalog = dbutils.widgets.get("catalog")
-schema = dbutils.widgets.get("schema")
+import sys
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "python"))
+from notebook_utils import safe_catalog, safe_schema, log
+
+catalog = safe_catalog(dbutils.widgets.get("catalog"))
+schema = safe_schema(dbutils.widgets.get("schema"))
 full_schema = f"{catalog}.{schema}"
 audit_table = f"{full_schema}.closure_file_audit"
-secret_scope = dbutils.widgets.get("secret_scope")
+secret_scope = (dbutils.widgets.get("secret_scope") or "getnet-outlook").strip()
 bu_contacts_path = dbutils.widgets.get("bu_contacts_path").strip()
 app_link = dbutils.widgets.get("app_link").strip()
 teams_webhook_url = dbutils.widgets.get("teams_webhook_url").strip()
@@ -54,7 +58,7 @@ def load_bu_contacts():
 
 bu_map = load_bu_contacts()
 if not bu_map:
-    print("No bu_contacts loaded. Set bu_contacts_path or place config/bu_contacts.yaml in workspace.")
+    log("NOTIFY_BU", "No bu_contacts loaded. Set bu_contacts_path or place config/bu_contacts.yaml in workspace.")
 
 # COMMAND ----------
 
@@ -78,17 +82,20 @@ else:
 
 rejected = rejected_df.collect()
 if not rejected:
-    print("No rejected files to notify (or already notified).")
+    log("NOTIFY_BU", "No rejected files to notify (or already notified).")
     dbutils.notebook.exit("0")
 
 # COMMAND ----------
 
-sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "python"))
-tenant_id = dbutils.secrets.get(scope=secret_scope, key="tenant_id")
-client_id = dbutils.secrets.get(scope=secret_scope, key="client_id")
-client_secret = dbutils.secrets.get(scope=secret_scope, key="client_secret")
-from outlook_send import get_graph_token, send_mail_simple
+try:
+    tenant_id = dbutils.secrets.get(scope=secret_scope, key="tenant_id")
+    client_id = dbutils.secrets.get(scope=secret_scope, key="client_id")
+    client_secret = dbutils.secrets.get(scope=secret_scope, key="client_secret")
+except Exception as e:
+    log("NOTIFY_BU", "Fatal: missing Outlook secrets in scope", secret_scope, str(e))
+    dbutils.notebook.exit('{"success": false, "reason": "secrets_failed"}')
 
+from outlook_send import get_graph_token, send_mail_simple
 token = get_graph_token(tenant_id, client_id, client_secret)
 
 # COMMAND ----------
@@ -102,7 +109,7 @@ def send_teams_if_configured(message: str):
         r = requests.post(teams_webhook_url, json=body, timeout=10)
         r.raise_for_status()
     except Exception as e:
-        print(f"Teams post failed: {e}")
+        log("NOTIFY_BU", "Teams post failed:", e)
 
 # COMMAND ----------
 
@@ -114,7 +121,7 @@ for row in rejected:
     email_info = bu_map.get(bu, {})
     to_email = (email_info.get("email") or "").strip()
     if not to_email:
-        print(f"No contact for BU {bu}; skip file {row.file_name}")
+        log("NOTIFY_BU", f"No contact for BU {bu}; skip file {row.file_name}")
         continue
 
     explanation = (row.rejection_explanation or row.rejection_reason or "See validation errors in the app.").strip()
@@ -136,7 +143,7 @@ Rejection details:
         notified_paths.append(row.file_path_in_volume)
         send_teams_if_configured(f"Getnet Closure: BU **{bu}** — file **{row.file_name}** rejected. Check email for details.")
     except Exception as e:
-        print(f"Failed to send to {to_email} for {row.file_name}: {e}")
+        log("NOTIFY_BU", f"Failed to send to {to_email} for {row.file_name}:", e)
 
 # COMMAND ----------
 
@@ -151,4 +158,4 @@ if has_notified and notified_paths:
 
 # COMMAND ----------
 
-print(f"Notified BU for {len(notified_paths)} rejected file(s).")
+log("NOTIFY_BU", f"Notified BU for {len(notified_paths)} rejected file(s).")

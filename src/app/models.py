@@ -137,3 +137,18 @@ class ClosureQualitySummary(BaseModel):
     pct_rejected: float = 0.0
     most_common_error_types: Optional[str] = None
     updated_at: Optional[datetime] = None
+
+
+# -----------------------------------------------------------------------------
+# Pipeline / automation status (BU → Global flow)
+# -----------------------------------------------------------------------------
+class PipelineRunStatus(BaseModel):
+    """Last closure pipeline run status for automation health."""
+    job_name: Optional[str] = None
+    run_id: Optional[str] = None
+    state: str = Field("UNKNOWN", description="RUNNING | TERMINATED | SKIPPED | INTERNAL_ERROR | etc.")
+    result_state: Optional[str] = Field(None, description="SUCCESS | FAILED | TIMEDOUT | CANCELED")
+    start_time: Optional[datetime] = None
+    end_time: Optional[datetime] = None
+    duration_seconds: Optional[float] = None
+    message: Optional[str] = None

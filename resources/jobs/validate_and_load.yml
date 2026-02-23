@@ -6,6 +6,7 @@ resources:
       description: "Validate each file (all-or-nothing), write audit with error summary; load valid files to closure_data Delta table."
       tasks:
         - task_key: "validate"
+          timeout_seconds: 1800
           notebook_task:
             notebook_path: ../../src/notebooks/validate_and_load.py
             source: WORKSPACE
@@ -30,3 +31,6 @@ resources:
               spark.master: local[*]
             custom_tags:
               ResourceClass: SingleNode
+          retry_on_timeout: true
+          max_retries: 2
+          min_retry_interval_millis: 60000

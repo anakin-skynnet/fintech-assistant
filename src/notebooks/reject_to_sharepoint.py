@@ -1,7 +1,7 @@
 # Databricks notebook source
 # MAGIC %md
 # MAGIC # Job 3: Move Rejected Files to SharePoint Review Folder
-# MAGIC Find audit rows with validation_status=rejected and moved_to_review_at IS NULL; upload file (and attachments) to SharePoint review folder; set moved_to_review_at.
+# MAGIC Find audit rows with validation_status=rejected and moved_to_review_at IS NULL; upload to SharePoint review folder; set moved_to_review_at. Idempotent: only moves not-yet-moved.
 
 # COMMAND ----------
 
@@ -17,10 +17,14 @@ dbutils.widgets.text("secret_scope", "getnet-sharepoint", "Secret scope")
 
 # COMMAND ----------
 
-catalog = dbutils.widgets.get("catalog")
-schema = dbutils.widgets.get("schema")
-volume_raw = dbutils.widgets.get("volume_raw")
-secret_scope = dbutils.widgets.get("secret_scope")
+import sys
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "python"))
+from notebook_utils import safe_catalog, safe_schema, log
+
+catalog = safe_catalog(dbutils.widgets.get("catalog"))
+schema = safe_schema(dbutils.widgets.get("schema"))
+volume_raw = (dbutils.widgets.get("volume_raw") or "raw_closure_files").strip()
+secret_scope = (dbutils.widgets.get("secret_scope") or "getnet-sharepoint").strip()
 full_schema = f"{catalog}.{schema}"
 audit_table = f"{full_schema}.closure_file_audit"
 
@@ -29,17 +33,19 @@ audit_table = f"{full_schema}.closure_file_audit"
 def get_secret(key):
     return dbutils.secrets.get(scope=secret_scope, key=key)
 
-tenant_id = get_secret("tenant_id")
-client_id = get_secret("client_id")
-client_secret = get_secret("client_secret")
-site_id = get_secret("sharepoint_site_id")
-drive_id = get_secret("sharepoint_drive_id")
-review_folder_path = get_secret("sharepoint_review_folder_path")
+try:
+    tenant_id = get_secret("tenant_id")
+    client_id = get_secret("client_id")
+    client_secret = get_secret("client_secret")
+    site_id = get_secret("sharepoint_site_id")
+    drive_id = get_secret("sharepoint_drive_id")
+    review_folder_path = get_secret("sharepoint_review_folder_path")
+except Exception as e:
+    log("REJECT", "Fatal: missing or invalid secrets in scope", secret_scope, str(e))
+    dbutils.notebook.exit('{"success": false, "reason": "secrets_failed"}')
 
 # COMMAND ----------
 
-import sys
-sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "python"))
 from sharepoint_client import get_graph_token, upload_file
 
 # COMMAND ----------
@@ -74,7 +80,7 @@ for row in rows:
         upload_file(access_token, site_id, drive_id, review_folder_path, file_name, content)
         updated_ids.append((file_path, now))
     except Exception as e:
-        print(f"Failed to upload {file_name}: {e}")
+        log("REJECT", f"Failed to upload {file_name}:", e)
 
 # COMMAND ----------
 
@@ -88,4 +94,4 @@ for file_path, ts in updated_ids:
 
 # COMMAND ----------
 
-print(f"Moved {len(updated_ids)} rejected file(s) to SharePoint review folder.")
+log("REJECT", f"Moved {len(updated_ids)} rejected file(s) to SharePoint review folder.")

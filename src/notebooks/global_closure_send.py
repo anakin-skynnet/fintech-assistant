@@ -25,19 +25,22 @@ dbutils.widgets.text("teams_webhook_url", "", "Optional: Teams incoming webhook 
 
 # COMMAND ----------
 
-catalog = dbutils.widgets.get("catalog")
-schema = dbutils.widgets.get("schema")
+import sys
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "python"))
+from notebook_utils import safe_catalog, safe_schema, log
+
+catalog = safe_catalog(dbutils.widgets.get("catalog"))
+schema = safe_schema(dbutils.widgets.get("schema"))
 full_schema = f"{catalog}.{schema}"
 audit_table = f"{full_schema}.closure_file_audit"
 closure_table = f"{full_schema}.closure_data"
 global_sent_table = f"{full_schema}.global_closure_sent"
 recipients_table = f"{full_schema}.global_closure_recipients"
-scope_sp = dbutils.widgets.get("secret_scope_sharepoint")
-scope_outlook = dbutils.widgets.get("secret_scope_outlook")
-run_prefix_job_key = dbutils.widgets.get("run_prefix_job_key").strip() or "global_closure_send"
+scope_sp = (dbutils.widgets.get("secret_scope_sharepoint") or "getnet-sharepoint").strip()
+scope_outlook = (dbutils.widgets.get("secret_scope_outlook") or "getnet-outlook").strip()
+run_prefix_job_key = (dbutils.widgets.get("run_prefix_job_key") or "global_closure_send").strip()
 require_reviewer_approval = dbutils.widgets.get("require_reviewer_approval") == "true"
 
-# Current closure period (e.g. 2025-02)
 period = datetime.utcnow().strftime("%Y-%m")
 
 # COMMAND ----------
@@ -76,7 +79,7 @@ else:
 valid_bus = {row.business_unit for row in valid_per_bu.collect() if row.business_unit}
 missing = set(expected_bus) - valid_bus
 if missing:
-    print(f"Not all BUs ready. Missing: {missing}. Skip send.")
+    log("GLOBAL_SEND", f"Not all BUs ready. Missing: {missing}. Skip send.")
     dbutils.notebook.exit(json.dumps({"sent": False, "reason": f"missing_bus_{list(missing)}"}))
 
 # COMMAND ----------
@@ -84,7 +87,7 @@ if missing:
 # Already sent for this period?
 sent = spark.sql(f"SELECT 1 FROM {global_sent_table} WHERE closure_period = '{period}' LIMIT 1").count()
 if sent > 0:
-    print(f"Already sent for period {period}. Skip.")
+    log("GLOBAL_SEND", f"Already sent for period {period}. Skip.")
     dbutils.notebook.exit(json.dumps({"sent": False, "reason": "already_sent"}))
 
 # COMMAND ----------
@@ -99,20 +102,20 @@ pdf = df.toPandas()
 
 # COMMAND ----------
 
-# Get next execution number (prefix) from closure_run_counter
+# Next execution number from closure_run_counter (atomic read-then-increment for robustness)
 counter_table = f"{full_schema}.closure_run_counter"
 run_number = 1
 try:
+    row_before = spark.sql(f"SELECT run_number FROM {counter_table} WHERE job_key = '{run_prefix_job_key}'").first()
+    if row_before is not None:
+        run_number = int(row_before.run_number) + 1
     spark.sql(f"""
       UPDATE {counter_table}
-      SET run_number = run_number + 1, updated_at = current_timestamp()
+      SET run_number = {run_number}, updated_at = current_timestamp()
       WHERE job_key = '{run_prefix_job_key}'
     """)
-    row = spark.sql(f"SELECT run_number FROM {counter_table} WHERE job_key = '{run_prefix_job_key}'").first()
-    if row is not None:
-        run_number = int(row.run_number)
 except Exception as e:
-    print(f"Run counter read failed, using run_number=1: {e}")
+    log("GLOBAL_SEND", "Run counter update failed, using run_number=1:", e)
 
 # COMMAND ----------
 
@@ -122,7 +125,7 @@ out_dir = f"/Volumes/{catalog}/{schema}/{out_volume}"
 out_name = f"{run_number:03d}_global_closure_{period}.csv"
 out_path = f"{out_dir}/{out_name}"
 dbutils.fs.mkdirs(out_dir)
-print(f"Execution #{run_number} — writing {out_name}")
+log("GLOBAL_SEND", f"Execution #{run_number} — writing {out_name}")
 
 # Write to local temp then copy to volume
 import tempfile
@@ -259,7 +262,7 @@ spark.createDataFrame([row]).write.format("delta").mode("append").saveAsTable(gl
 
 # COMMAND ----------
 
-print(f"Global closure for {period} sent to {financial_lead_email}" + (f" and {len(global_team_emails)} global_team recipient(s)." if global_team_emails else "."))
+log("GLOBAL_SEND", f"Global closure for {period} sent to {financial_lead_email}" + (f" and {len(global_team_emails)} global_team recipient(s)." if global_team_emails else "."))
 
 # Optional: post to Teams channel
 teams_url = dbutils.widgets.get("teams_webhook_url").strip()

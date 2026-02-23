@@ -7,6 +7,7 @@ resources:
       description: "Add reviewer/approval columns to closure_file_audit, global_team_notified_at and global_closure_recipients. Run once after UC Setup."
       tasks:
         - task_key: "extension"
+          timeout_seconds: 900
           notebook_task:
             notebook_path: ../../src/notebooks/setup_uc_workflow_extension.py
             source: WORKSPACE
