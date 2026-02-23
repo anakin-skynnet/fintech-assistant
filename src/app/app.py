@@ -101,42 +101,42 @@ st.markdown(
 
 st.markdown("""
 <style>
-    /* ========== Design system: Financial Closure App ========== */
+    /* ========== Design system: Financial Closure App (light theme) ========== */
     :root {
-        --bg-dark: #0a0e1a;
-        --bg-card: #111827;
-        --bg-card-hover: #1a2332;
-        --surface: #0f172a;
-        --text-primary: #f8fafc;
-        --text-secondary: #cbd5e1;
-        --text-muted: #94a3b8;
-        --accent: #06b6d4;
-        --accent-hover: #22d3ee;
-        --accent-soft: rgba(6, 182, 212, 0.18);
-        --border: #1e293b;
-        --border-light: #334155;
-        --valid: #34d399;
-        --valid-soft: rgba(52, 211, 153, 0.15);
-        --rejected: #f87171;
-        --rejected-soft: rgba(248, 113, 113, 0.12);
-        --warning: #fbbf24;
-        --warning-soft: rgba(251, 191, 36, 0.12);
-        --info: #38bdf8;
+        --bg-dark: #f1f5f9;
+        --bg-card: #ffffff;
+        --bg-card-hover: #f8fafc;
+        --surface: #e2e8f0;
+        --text-primary: #0f172a;
+        --text-secondary: #334155;
+        --text-muted: #64748b;
+        --accent: #0891b2;
+        --accent-hover: #0e7490;
+        --accent-soft: rgba(8, 145, 178, 0.12);
+        --border: #e2e8f0;
+        --border-light: #cbd5e1;
+        --valid: #059669;
+        --valid-soft: rgba(5, 150, 105, 0.12);
+        --rejected: #dc2626;
+        --rejected-soft: rgba(220, 38, 38, 0.1);
+        --warning: #d97706;
+        --warning-soft: rgba(217, 119, 6, 0.12);
+        --info: #0284c7;
         --radius: 14px;
         --radius-sm: 10px;
         --radius-pill: 9999px;
-        --shadow: 0 4px 20px rgba(0,0,0,0.25);
-        --shadow-hover: 0 12px 32px rgba(0,0,0,0.35);
+        --shadow: 0 1px 3px rgba(0,0,0,0.08);
+        --shadow-hover: 0 4px 12px rgba(0,0,0,0.12);
         --font-sans: 'Plus Jakarta Sans', 'Inter', system-ui, sans-serif;
         --font-display: 'DM Serif Display', Georgia, serif;
     }
 
     .stApp {
-        background: linear-gradient(160deg, var(--bg-dark) 0%, var(--surface) 45%, #0c1222 100%);
+        background: linear-gradient(160deg, #f8fafc 0%, var(--surface) 45%, #e2e8f0 100%);
         font-family: var(--font-sans);
     }
     header[data-testid="stHeader"] {
-        background: rgba(10, 14, 26, 0.95);
+        background: rgba(255, 255, 255, 0.95);
         border-bottom: 1px solid var(--border);
     }
     .main .block-container {
@@ -246,16 +246,16 @@ st.markdown("""
         font-weight: 600;
         letter-spacing: 0.03em;
     }
-    .badge-valid { background: var(--valid-soft); color: var(--valid); border: 1px solid rgba(52,211,153,0.4); }
-    .badge-rejected { background: var(--rejected-soft); color: var(--rejected); border: 1px solid rgba(248,113,113,0.4); }
-    .badge-neutral { background: var(--accent-soft); color: var(--accent); border: 1px solid rgba(6,182,212,0.4); }
+    .badge-valid { background: var(--valid-soft); color: var(--valid); border: 1px solid rgba(5,150,105,0.35); }
+    .badge-rejected { background: var(--rejected-soft); color: var(--rejected); border: 1px solid rgba(220,38,38,0.35); }
+    .badge-neutral { background: var(--accent-soft); color: var(--accent); border: 1px solid rgba(8,145,178,0.35); }
 
     /* Tables */
     div[data-testid="stDataFrame"] {
         border-radius: var(--radius-sm);
         overflow: hidden;
         border: 1px solid var(--border);
-        box-shadow: 0 2px 12px rgba(0,0,0,0.2);
+        box-shadow: var(--shadow);
     }
     div[data-testid="stDataFrame"] th {
         background: var(--bg-card) !important;
@@ -267,7 +267,7 @@ st.markdown("""
 
     /* Sidebar */
     [data-testid="stSidebar"] {
-        background: linear-gradient(180deg, #0f172a 0%, #0a0e1a 100%);
+        background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
         border-right: 1px solid var(--border);
     }
     [data-testid="stSidebar"] .stMarkdown { font-family: var(--font-sans); }
@@ -283,17 +283,17 @@ st.markdown("""
     /* Banners */
     .mock-banner {
         background: var(--warning-soft);
-        border: 1px solid rgba(251, 191, 36, 0.45);
+        border: 1px solid rgba(217, 119, 6, 0.35);
         border-radius: var(--radius-sm);
         padding: 0.95rem 1.25rem;
         margin-bottom: 1.25rem;
         font-size: 0.9rem;
-        color: #fde047;
+        color: var(--warning);
         font-family: var(--font-sans);
     }
     .banner-error {
         background: var(--rejected-soft);
-        border: 1px solid rgba(248, 113, 113, 0.4);
+        border: 1px solid rgba(220, 38, 38, 0.3);
         border-radius: var(--radius-sm);
         padding: 0.95rem 1.25rem;
         margin-bottom: 1.25rem;
@@ -329,8 +329,8 @@ st.markdown("""
         font-family: var(--font-sans) !important;
     }
     .stButton > button[kind="primary"]:hover {
-        box-shadow: 0 4px 20px rgba(6, 182, 212, 0.4) !important;
-        filter: brightness(1.08);
+        box-shadow: 0 2px 12px rgba(8, 145, 178, 0.35) !important;
+        filter: brightness(0.97);
     }
 
     /* Expander & alerts */
@@ -618,12 +618,12 @@ def main():
                     )
                     fig.update_layout(
                         margin=dict(l=20, r=20, t=28, b=20),
-                        paper_bgcolor="rgba(0,0,0,0)",
-                        plot_bgcolor="rgba(17,24,39,0.5)",
-                        font=dict(color="#f8fafc", family="Plus Jakarta Sans, system-ui, sans-serif"),
+                        paper_bgcolor="rgba(255,255,255,0)",
+                        plot_bgcolor="rgba(248,250,252,0.8)",
+                        font=dict(color="#0f172a", family="Plus Jakarta Sans, system-ui, sans-serif"),
                         showlegend=False,
-                        xaxis=dict(gridcolor="rgba(148,163,184,0.12)", zeroline=False),
-                        yaxis=dict(gridcolor="rgba(148,163,184,0.12)", zeroline=False),
+                        xaxis=dict(gridcolor="rgba(148,163,184,0.25)", zeroline=False),
+                        yaxis=dict(gridcolor="rgba(148,163,184,0.25)", zeroline=False),
                         bargap=0.35,
                     )
                     st.plotly_chart(fig, use_container_width=True)
