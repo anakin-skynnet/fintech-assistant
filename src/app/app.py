@@ -469,10 +469,11 @@ def main():
                         else:
                             st.error(f"**{f.name}**: {msg}")
 
-    # Tabbed layout for clear navigation (Overview | Files & audit | Analytics | Health)
-    tab_overview, tab_files, tab_analytics, tab_health = st.tabs([
+    # Tabbed layout for clear navigation (Overview | Files & audit | Correct invalid | Analytics | Health)
+    tab_overview, tab_files, tab_correct, tab_analytics, tab_health = st.tabs([
         "📊 Overview",
         "📁 Files & audit",
+        "✏️ Correct invalid",
         "📈 Analytics",
         "❤️ Health & status",
     ])
@@ -594,6 +595,79 @@ def main():
                 else:
                     st.info(message)
             st.caption("One click moves all pending invalid files to the review folder.")
+
+    with tab_correct:
+        st.markdown('<p class="section-title">Correct invalid data (inline edit)</p>', unsafe_allow_html=True)
+        st.caption("Edit cells directly, then Save. Cells with validation errors are highlighted with a red border.")
+        rejected_for_edit = [a for a in (audit_files or []) if a.validation_status == "rejected"]
+        if not rejected_for_edit:
+            st.info("No rejected files to correct. Upload files or run the pipeline to see invalid files here.")
+        else:
+            backend, _ = get_backend(catalog.strip(), schema.strip(), period.strip())
+            file_options = {a.file_name: a.file_path_in_volume for a in rejected_for_edit}
+            selected_file = st.selectbox(
+                "Select file to correct",
+                options=list(file_options.keys()),
+                key="correct_file_select",
+            )
+            if selected_file:
+                vol_path = file_options[selected_file]
+                ok, data_records, columns, cells_to_fix, msg = backend.get_invalid_rows_for_edit(vol_path)
+                if not ok or not data_records or not columns:
+                    st.warning(msg or "Could not load file for editing.")
+                else:
+                    # Build df with Fix required column (which fields need fix per row)
+                    row_errors: dict[int, list[str]] = {}
+                    for ri, col_name in cells_to_fix or []:
+                        row_errors.setdefault(ri, []).append(col_name)
+                    df_data = pd.DataFrame(data_records, columns=columns)
+                    df_data["Fix required"] = [", ".join(row_errors.get(i, [])) for i in range(len(df_data))]
+                    col_to_idx = {c: i for i, c in enumerate(columns)}
+                    # CSS: red border on cells that need fixing (target next sibling to scope to this editor only)
+                    css_rules = []
+                    for ri, col_name in cells_to_fix or []:
+                        ci = col_to_idx.get(col_name, -1)
+                        if ci >= 0:
+                            css_rules.append(
+                                f"#correct-invalid-editor + div div[data-testid=\"stDataFrame\"] tbody tr:nth-of-type({ri + 1}) td:nth-child({ci + 1}) {{ border: 2px solid #dc2626 !important; box-shadow: inset 0 0 0 1px #dc2626 !important; }}"
+                            )
+                    if css_rules:
+                        st.markdown(
+                            f"<style>{''.join(css_rules)}</style>",
+                            unsafe_allow_html=True,
+                        )
+                    st.markdown('<div id="correct-invalid-editor"></div>', unsafe_allow_html=True)
+                    column_config = {}
+                    for c in columns:
+                        if c in ("amount",):
+                            column_config[c] = st.column_config.NumberColumn(c, format="%.2f")
+                        elif c in ("value_date",):
+                            column_config[c] = st.column_config.TextColumn(c)
+                        else:
+                            column_config[c] = st.column_config.TextColumn(c)
+                    column_config["Fix required"] = st.column_config.TextColumn("Fix required", disabled=True)
+                    edited = st.data_editor(
+                        df_data,
+                        column_config=column_config,
+                        use_container_width=True,
+                        hide_index=True,
+                        key="correct_invalid_editor",
+                    )
+                    if st.button("Save corrected file", type="primary", key="save_corrected_btn"):
+                        try:
+                            out_df = edited.drop(columns=["Fix required"], errors="ignore")
+                            from io import BytesIO
+                            buf = BytesIO()
+                            out_df.to_excel(buf, index=False, sheet_name="Closure")
+                            buf.seek(0)
+                            ok_save, msg_save = backend.save_edited_file_and_validate(vol_path, selected_file, buf.getvalue())
+                            if ok_save:
+                                st.success(msg_save)
+                                st.rerun()
+                            else:
+                                st.error(msg_save)
+                        except Exception as e:
+                            st.error(f"Save failed: {e}")
 
     with tab_analytics:
         st.markdown('<p class="section-title">Closure by business unit</p>', unsafe_allow_html=True)

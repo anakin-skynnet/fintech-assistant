@@ -95,6 +95,18 @@ class ClosureBackend(ABC):
         """Load Excel from volume as list of row dicts for inline editing. Returns (success, data_or_none, message)."""
         return (False, None, "Edit only available when the app runs on Databricks.")
 
+    def get_invalid_rows_for_edit(
+        self, file_path_in_volume: str
+    ) -> tuple[bool, Optional[list], Optional[list], Optional[list], str]:
+        """
+        Load rejected file for inline correction with cell-level error mapping.
+        Returns (success, data_records, columns, cells_to_fix, message).
+        data_records: list of dict (row data from Excel).
+        columns: list of column names (order preserved).
+        cells_to_fix: list of (row_idx_0based, col_name) for cells that need fixing (red border).
+        """
+        return (False, None, None, None, "Edit only available when the app runs on Databricks.")
+
     def save_edited_file_and_validate(self, volume_path: str, file_name: str, file_bytes: bytes) -> tuple[bool, str]:
         """Overwrite file at volume_path with file_bytes and re-run validation. Returns (success, message)."""
         return (False, "Save only available when the app runs on Databricks.")
@@ -541,6 +553,53 @@ class DatabricksBackend(ClosureBackend):
         except Exception as e:
             return (False, None, str(e))
 
+    def get_invalid_rows_for_edit(
+        self, file_path_in_volume: str
+    ) -> tuple[bool, Optional[list], Optional[list], Optional[list], str]:
+        """
+        Load rejected file for inline correction with cell-level error mapping.
+        Returns (success, data_records, columns, cells_to_fix, message).
+        cells_to_fix: list of (row_idx_0based, col_name) for cells that need red border.
+        """
+        import json
+        ok, content, msg = self.get_file_bytes_from_volume(file_path_in_volume)
+        if not ok or content is None:
+            return (False, None, None, None, msg or "Could not read file.")
+        try:
+            from io import BytesIO
+            df = pd.read_excel(BytesIO(content), sheet_name=0, header=0)
+            # Parse validation_errors_summary from audit
+            df_audit = self._run_sql(f"""
+                SELECT validation_errors_summary FROM {self.full_schema}.closure_file_audit
+                WHERE file_path_in_volume = '{file_path_in_volume.replace("'", "''")}'
+                AND validation_status = 'rejected' LIMIT 1
+            """)
+            cells_to_fix: list[tuple[int, str]] = []
+            if not df_audit.empty:
+                summary = df_audit["validation_errors_summary"].iloc[0]
+                if summary and str(summary).strip() and str(summary).strip() != "[]":
+                    try:
+                        errors = json.loads(summary)
+                        for e in errors:
+                            row_1based = e.get("row") or 0
+                            field = e.get("field") or ""
+                            if field and str(field).strip():
+                                # Excel row 1 = header; data rows start at 2 -> df index 0
+                                row_0based = max(0, int(row_1based) - 2) if isinstance(row_1based, (int, float)) else 0
+                                if row_0based < len(df):
+                                    cells_to_fix.append((row_0based, str(field).strip()))
+                    except Exception:
+                        pass
+            # Serialize for Streamlit
+            df = df.where(pd.notnull(df), None)
+            for col in df.columns:
+                if pd.api.types.is_datetime64_any_dtype(df[col]):
+                    df[col] = df[col].astype("datetime64[ns]").dt.strftime("%Y-%m-%d")
+            columns = list(df.columns)
+            return (True, df.to_dict("records"), columns, cells_to_fix, "OK")
+        except Exception as e:
+            return (False, None, None, None, str(e))
+
     def save_edited_file_and_validate(self, volume_path: str, file_name: str, file_bytes: bytes) -> tuple[bool, str]:
         """Overwrite file at volume_path with file_bytes and re-run validation."""
         import tempfile
@@ -909,6 +968,19 @@ class MockBackend(ClosureBackend):
 
     def get_file_data_for_edit(self, volume_path: str) -> tuple[bool, Optional[list], str]:
         return (False, None, "Edit only available when the app runs on Databricks.")
+
+    def get_invalid_rows_for_edit(
+        self, file_path_in_volume: str
+    ) -> tuple[bool, Optional[list], Optional[list], Optional[list], str]:
+        # Mock: return sample data for UI testing when not on Databricks
+        mock_records = [
+            {"amount": 0, "currency": "BRL", "account_code": "ACC001", "description": "Line 1", "value_date": "2025-02-15", "business_unit": "BU_C"},
+            {"amount": 1500.50, "currency": "BRL", "account_code": "ACC002", "description": "Line 2", "value_date": "2025/02/20", "business_unit": "BU_C"},
+            {"amount": 2300.0, "currency": "BRL", "account_code": "ACC003", "description": "Line 3", "value_date": "2025-02-18", "business_unit": "BU_C"},
+        ]
+        mock_columns = ["amount", "currency", "account_code", "description", "value_date", "business_unit"]
+        mock_cells = [(0, "amount"), (1, "value_date")]  # row 0: amount invalid; row 1: value_date invalid
+        return (True, mock_records, mock_columns, mock_cells, "OK (mock)")
 
     def save_edited_file_and_validate(self, volume_path: str, file_name: str, file_bytes: bytes) -> tuple[bool, str]:
         return (False, "Save only available when the app runs on Databricks.")
