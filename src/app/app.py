@@ -418,11 +418,11 @@ def main():
     # Hero
     st.markdown('<p class="hero-title">Getnet Financial Closure</p>', unsafe_allow_html=True)
     st.markdown(
-        '<p class="hero-subtitle">Monitor BU files, validation, and global closure — fix invalid files and automate send.</p>',
+        '<p class="hero-subtitle">Accelerate financial closure with automated validation, inline correction, and one-click send to global team. Reduce manual rework and human intervention.</p>',
         unsafe_allow_html=True,
     )
     st.markdown(
-        f'<p class="hero-meta">Data as of last load · Refresh the app to fetch latest from backend</p>',
+        '<p class="hero-meta">Data as of last load · Change Catalog, Schema, or Period in the sidebar to filter · Refresh to fetch latest</p>',
         unsafe_allow_html=True,
     )
 
@@ -556,7 +556,7 @@ def main():
             )
             st.dataframe(df_audit, use_container_width=True, hide_index=True)
             if use_real_data:
-                st.caption("Download a file to fix locally, then re-upload via **Upload Excel to raw volume** above.")
+                st.caption("Download to fix locally, or use the **Correct invalid** tab for inline editing. Re-upload via **Upload Excel to raw volume** above.")
                 backend, _ = get_backend(catalog.strip(), schema.strip(), period.strip())
                 max_downloads = 25
                 download_items = []
@@ -577,13 +577,14 @@ def main():
                                 data=data,
                                 file_name=fname,
                                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                                key=f"dl_{path.replace('/', '_')}",
+                                key=f"dl_{idx}",
                             )
                 if len(audit_files) > max_downloads:
                     st.caption(f"Showing download for the most recent {max_downloads} files.")
             with st.expander("ℹ️ How to fix invalid files", expanded=False):
-                st.markdown("**Option 1 (recommended):** Download the file above → fix locally using **Error analysis** (Analytics tab) → re-upload in **Upload Excel to raw volume**. Same file re-upload updates the audit row; if valid, data is loaded.")
-                st.markdown("**Option 2:** Use **Send to review** below to move invalid files to the review folder; fix and re-submit, then run **Validate and load** or re-upload in the app.")
+                st.markdown("**Option 1 (inline, recommended):** Use the **Correct invalid** tab to edit cells directly in the app. Cells with errors are highlighted; fix and Save — no download/upload roundtrip.")
+                st.markdown("**Option 2:** Download the file above → fix locally using **Error analysis** (Analytics tab) → re-upload in **Upload Excel to raw volume**. Same file re-upload updates the audit row; if valid, data is loaded.")
+                st.markdown("**Option 3:** Use **Send to review** below to move invalid files to the SharePoint review folder; fix and re-submit, then run **Validate and load** or re-upload in the app.")
         else:
             st.caption("No audit rows for the selected period. Upload files above or run the pipeline job (Ingest → Validate and load) to automate.")
         if use_real_data:
@@ -598,20 +599,27 @@ def main():
 
     with tab_correct:
         st.markdown('<p class="section-title">Correct invalid data (inline edit)</p>', unsafe_allow_html=True)
-        st.caption("Edit cells directly, then Save. Cells with validation errors are highlighted with a red border.")
+        st.caption("Edit cells directly, then Save. Cells with validation errors are highlighted with a red border. Fix values and click Save to overwrite the file in the volume and re-run validation — no download/upload roundtrip.")
         rejected_for_edit = [a for a in (audit_files or []) if a.validation_status == "rejected"]
         if not rejected_for_edit:
             st.info("No rejected files to correct. Upload files or run the pipeline to see invalid files here.")
         else:
             backend, _ = get_backend(catalog.strip(), schema.strip(), period.strip())
-            file_options = {a.file_name: a.file_path_in_volume for a in rejected_for_edit}
-            selected_file = st.selectbox(
+            # Use index to avoid duplicate file_name overwriting path; format_func shows file_name + date when needed
+            def _file_label(i: int) -> str:
+                a = rejected_for_edit[i]
+                date_part = a.file_path_in_volume.rstrip("/").split("/")[-1] if a.file_path_in_volume else ""
+                return f"{a.file_name}" + (f" ({date_part})" if date_part and len(rejected_for_edit) > 1 else "")
+            sel_idx = st.selectbox(
                 "Select file to correct",
-                options=list(file_options.keys()),
+                options=list(range(len(rejected_for_edit))),
+                format_func=_file_label,
                 key="correct_file_select",
             )
-            if selected_file:
-                vol_path = file_options[selected_file]
+            if sel_idx is not None:
+                selected_audit = rejected_for_edit[sel_idx]
+                vol_path = selected_audit.file_path_in_volume
+                selected_file = selected_audit.file_name
                 ok, data_records, columns, cells_to_fix, msg = backend.get_invalid_rows_for_edit(vol_path)
                 if not ok or not data_records or not columns:
                     st.warning(msg or "Could not load file for editing.")
@@ -653,6 +661,8 @@ def main():
                         hide_index=True,
                         key="correct_invalid_editor",
                     )
+                    if not use_real_data:
+                        st.caption("💡 Save is only available when connected to Databricks (Real data source). On mock, edits are for preview only.")
                     if st.button("Save corrected file", type="primary", key="save_corrected_btn"):
                         try:
                             out_df = edited.drop(columns=["Fix required"], errors="ignore")
@@ -706,7 +716,7 @@ def main():
             with c2:
                 st.dataframe(df_bu, use_container_width=True, hide_index=True)
         else:
-            st.info("No closure data for the selected filters.")
+            st.info("No closure data for the selected filters. Upload files above or run the pipeline job (Ingest → Validate and load) to populate.")
         st.markdown('<p class="section-title">Error analysis (validation failures)</p>', unsafe_allow_html=True)
         if err_summary.by_field_and_cause:
             df_err = _models_to_dataframe(
@@ -714,7 +724,7 @@ def main():
                 ["field", "invalid_cause", "count", "example_value"],
                 lambda x: [x.field or "", x.invalid_cause or "", x.count, x.example_value or ""],
             )
-            st.caption(f"Total validation errors: {err_summary.total_errors} across {err_summary.files_with_errors} file(s). Fix these patterns to improve approval rates.")
+            st.caption(f"Total validation errors: {err_summary.total_errors} across {err_summary.files_with_errors} file(s). Use the **Correct invalid** tab to fix inline, or fix these patterns and re-upload to improve approval rates.")
             st.dataframe(df_err, use_container_width=True, hide_index=True)
         else:
             st.success("No validation errors in the selected period. Pipeline can proceed with minimal intervention.")
