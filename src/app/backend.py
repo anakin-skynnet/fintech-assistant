@@ -230,9 +230,8 @@ class DatabricksBackend(ClosureBackend):
                     os.unlink(tmp_path)
                 except Exception:
                     pass
-        # Trigger in-memory validation and update audit table; if valid, append to closure_data with BU/source (no mock — real volume + tables)
         ok_validate, msg_validate = self._validate_and_audit(volume_path, file_bytes, safe_name)
-        return (True, f"Saved to {volume_path}. {msg_validate}")
+        return (ok_validate, f"Saved to {volume_path}. {msg_validate}")
 
     def _upsert_audit_row(self, audit_table: str, audit_row: dict) -> None:
         """Insert or update one audit row by file_path_in_volume. Re-upload of corrected file updates same row (optimal correction)."""
@@ -313,6 +312,7 @@ class DatabricksBackend(ClosureBackend):
                         os.unlink(tmp_path)
                     except Exception:
                         pass
+            pdf.columns = [c.strip().lower().replace(" ", "_") for c in pdf.columns]
             errors = validate_dataframe(pdf, columns_config, max_errors_per_file)
             if errors:
                 err_lines = []
@@ -353,7 +353,7 @@ class DatabricksBackend(ClosureBackend):
                 "updated_at": now,
             }
             self._upsert_audit_row(audit_table, audit_row)
-            # Upload to financial closure raw table with BU/source so data source is identifiable
+            pdf.columns = [c.strip().lower().replace(" ", "_") for c in pdf.columns]
             pdf["source_file_name"] = file_name
             pdf["ingested_at"] = now
             if "value_date" in pdf.columns:

@@ -13,7 +13,7 @@ import yaml
 
 def load_schema(config_path: str) -> Dict:
     with open(config_path, "r") as f:
-        return yaml.safe_load(f)
+        return yaml.safe_load(f) or {}
 
 
 def _coerce_date(val: Any, fmt: str) -> Optional[datetime]:
@@ -40,6 +40,8 @@ def validate_row(
     errors = []
     for col_def in columns_config:
         name = col_def.get("name")
+        if not name:
+            continue
         validations = col_def.get("validations", [])
         val = row.get(name)
         for v in validations:

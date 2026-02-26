@@ -24,7 +24,17 @@ dbutils.widgets.text("teams_webhook_url", "", "Optional: Teams incoming webhook 
 # COMMAND ----------
 
 import sys
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "python"))
+
+def _notebook_dir():
+    """Resolve the notebook's parent directory in the Databricks workspace filesystem."""
+    try:
+        ctx = dbutils.notebook.entry_point.getDbutils().notebook().getContext()
+        nb_path = ctx.notebookPath().get()
+        return "/Workspace" + os.path.dirname(nb_path)
+    except Exception:
+        return "/Workspace"
+
+sys.path.insert(0, os.path.join(_notebook_dir(), "..", "python"))
 from notebook_utils import safe_catalog, safe_schema, log
 
 catalog = safe_catalog(dbutils.widgets.get("catalog"))
@@ -46,7 +56,7 @@ def load_bu_contacts():
         return {c["business_unit"]: c for c in (data.get("bu_contacts") or [])}
     try:
         # Repo root: config/bu_contacts.yaml (when run from bundle, path is relative to repo)
-        repo_root = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", ".."))
+        repo_root = os.path.abspath(os.path.join(_notebook_dir(), "..", "..", ".."))
         path = os.path.join(repo_root, "config", "bu_contacts.yaml")
         if os.path.exists(path):
             with open(path, "r") as f:

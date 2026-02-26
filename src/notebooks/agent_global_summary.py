@@ -7,8 +7,20 @@
 # COMMAND ----------
 
 import json
-import os
+import os, sys
 from datetime import datetime
+
+def _notebook_dir():
+    """Resolve the notebook's parent directory in the Databricks workspace filesystem."""
+    try:
+        ctx = dbutils.notebook.entry_point.getDbutils().notebook().getContext()
+        nb_path = ctx.notebookPath().get()
+        return "/Workspace" + os.path.dirname(nb_path)
+    except Exception:
+        return "/Workspace"
+
+sys.path.insert(0, os.path.join(_notebook_dir(), "..", "python"))
+from notebook_utils import safe_catalog, safe_schema, log
 
 # COMMAND ----------
 
@@ -18,8 +30,8 @@ dbutils.widgets.text("closure_period", "", "Closure period (e.g. 2025-02); empty
 
 # COMMAND ----------
 
-catalog = dbutils.widgets.get("catalog")
-schema = dbutils.widgets.get("schema")
+catalog = safe_catalog(dbutils.widgets.get("catalog"))
+schema = safe_schema(dbutils.widgets.get("schema"))
 period = dbutils.widgets.get("closure_period").strip() or datetime.utcnow().strftime("%Y-%m")
 full_schema = f"{catalog}.{schema}"
 closure_table = f"{full_schema}.closure_data"
@@ -63,7 +75,7 @@ def generate_summary() -> str:
         if reply.choices and reply.choices[0].message.content:
             return reply.choices[0].message.content.strip()
     except Exception as e:
-        print(f"LLM call failed ({e}), using fallback.")
+        log("SUMMARY", f"LLM call failed ({e}), using fallback.")
     return f"Global closure for {period}: {total_rows} rows, total amount {total_amount:.2f}. By BU: " + "; ".join(f"{r.business_unit} {r.total_amount:.2f}" for r in rows)
 
 # COMMAND ----------

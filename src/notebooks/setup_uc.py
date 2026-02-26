@@ -13,9 +13,23 @@ dbutils.widgets.text("volume_raw", "raw_closure_files", "Raw files volume")
 
 # COMMAND ----------
 
-catalog = dbutils.widgets.get("catalog")
-schema_name = dbutils.widgets.get("schema")
-volume_raw = dbutils.widgets.get("volume_raw")
+import os, sys, re
+
+def _notebook_dir():
+    """Resolve the notebook's parent directory in the Databricks workspace filesystem."""
+    try:
+        ctx = dbutils.notebook.entry_point.getDbutils().notebook().getContext()
+        nb_path = ctx.notebookPath().get()
+        return "/Workspace" + os.path.dirname(nb_path)
+    except Exception:
+        return "/Workspace"
+
+sys.path.insert(0, os.path.join(_notebook_dir(), "..", "python"))
+from notebook_utils import safe_catalog, safe_schema, safe_volume
+
+catalog = safe_catalog(dbutils.widgets.get("catalog"))
+schema_name = safe_schema(dbutils.widgets.get("schema"))
+volume_raw = safe_volume(dbutils.widgets.get("volume_raw"))
 full_schema = f"{catalog}.{schema_name}"
 
 # COMMAND ----------
@@ -80,7 +94,7 @@ CREATE TABLE IF NOT EXISTS {full_schema}.closure_file_audit (
   updated_at TIMESTAMP NOT NULL
 )
 USING DELTA
-COMMENT 'One row per Excel file (file as unit). validation_status valid|rejected; whole file invalid if any row/value fails. validation_errors_summary = JSON array of {row, field, value, invalid_cause}; processed_at = audit date; rejected files sent back to BUs via review folder.'
+COMMENT 'One row per Excel file (file as unit). validation_status valid|rejected; whole file invalid if any row/value fails. validation_errors_summary = JSON array of (row, field, value, invalid_cause); processed_at = audit date; rejected files sent back to BUs via review folder.'
 """).collect()
 
 # COMMAND ----------
@@ -125,10 +139,10 @@ SELECT
   a.business_unit,
   a.validation_status,
   a.processed_at,
-  e.row AS error_row,
-  e.field AS error_field,
-  e.value AS error_value,
-  e.invalid_cause AS invalid_cause
+  error_row,
+  error_field,
+  error_value,
+  invalid_cause
 FROM {full_schema}.closure_file_audit a
 LATERAL VIEW OUTER INLINE(
   CASE
@@ -136,7 +150,7 @@ LATERAL VIEW OUTER INLINE(
     THEN FROM_JSON(a.validation_errors_summary, 'ARRAY<STRUCT<row: INT, field: STRING, value: STRING, invalid_cause: STRING>>')
     ELSE ARRAY()
   END
-) AS e
+) e AS error_row, error_field, error_value, invalid_cause
 WHERE a.validation_status = 'rejected'
 """).collect()
 

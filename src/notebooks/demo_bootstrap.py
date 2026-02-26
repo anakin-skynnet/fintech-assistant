@@ -20,12 +20,22 @@ dbutils.widgets.text("value_date", "", "Value date yyyy-MM-dd (empty = today)")
 # COMMAND ----------
 
 import sys
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "python"))
-from notebook_utils import safe_catalog, safe_schema, log
+
+def _notebook_dir():
+    """Resolve the notebook's parent directory in the Databricks workspace filesystem."""
+    try:
+        ctx = dbutils.notebook.entry_point.getDbutils().notebook().getContext()
+        nb_path = ctx.notebookPath().get()
+        return "/Workspace" + os.path.dirname(nb_path)
+    except Exception:
+        return "/Workspace"
+
+sys.path.insert(0, os.path.join(_notebook_dir(), "..", "python"))
+from notebook_utils import safe_catalog, safe_schema, safe_volume, log
 
 catalog = safe_catalog(dbutils.widgets.get("catalog"))
 schema = safe_schema(dbutils.widgets.get("schema"))
-volume_raw = (dbutils.widgets.get("volume_raw") or "raw_closure_files").strip()
+volume_raw = safe_volume(dbutils.widgets.get("volume_raw"))
 bus_str = dbutils.widgets.get("bus")
 rows_per_file = max(1, min(1000, int(dbutils.widgets.get("rows_per_file") or "5")))
 value_date_str = dbutils.widgets.get("value_date").strip()
@@ -62,23 +72,21 @@ columns = ["amount", "currency", "account_code", "description", "value_date", "b
 
 # COMMAND ----------
 
-dbutils.fs.mkdirs(volume_folder)
+import io
+os.makedirs(volume_folder, exist_ok=True)
 created = []
 
 for bu in bus_list:
     rows = make_sample_rows(bu, rows_per_file, value_date)
     df = pd.DataFrame(rows, columns=columns)
-    file_name = f"closure_{bu.lower().replace('_', '_')}_{period_suffix}.xlsx"
-    local_path = f"/tmp/{file_name}"
-    df.to_excel(local_path, index=False, sheet_name="Closure", engine="openpyxl")
-    volume_path = f"{volume_folder}/{file_name}"
-    dbutils.fs.cp(f"file:{local_path}", volume_path)
-    try:
-        os.remove(local_path)
-    except Exception:
-        pass
-    created.append(volume_path)
-    log("BOOTSTRAP", f"Created {volume_path}")
+    file_name = f"closure_{bu.lower().replace(' ', '_')}_{period_suffix}.xlsx"
+    dest = f"{volume_folder}/{file_name}"
+    buf = io.BytesIO()
+    df.to_excel(buf, index=False, sheet_name="Closure", engine="openpyxl")
+    with open(dest, "wb") as f:
+        f.write(buf.getvalue())
+    created.append(dest)
+    log("BOOTSTRAP", f"Created {dest}")
 
 # COMMAND ----------
 

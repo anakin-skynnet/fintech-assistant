@@ -20,12 +20,21 @@ dbutils.widgets.text("config_path", "", "Optional: path to closure_schema.yaml (
 
 # COMMAND ----------
 
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "python"))
-from notebook_utils import safe_catalog, safe_schema, get_run_id, log
+def _notebook_dir():
+    """Resolve the notebook's parent directory in the Databricks workspace filesystem."""
+    try:
+        ctx = dbutils.notebook.entry_point.getDbutils().notebook().getContext()
+        nb_path = ctx.notebookPath().get()
+        return "/Workspace" + os.path.dirname(nb_path)
+    except Exception:
+        return "/Workspace"
+
+sys.path.insert(0, os.path.join(_notebook_dir(), "..", "python"))
+from notebook_utils import safe_catalog, safe_schema, safe_volume, get_run_id, log
 
 catalog = safe_catalog(dbutils.widgets.get("catalog"))
 schema = safe_schema(dbutils.widgets.get("schema"))
-volume_raw = (dbutils.widgets.get("volume_raw") or "raw_closure_files").strip()
+volume_raw = safe_volume(dbutils.widgets.get("volume_raw"))
 config_path = dbutils.widgets.get("config_path")
 
 volume_base = f"/Volumes/{catalog}/{schema}/{volume_raw}"
@@ -79,11 +88,11 @@ from pyspark.sql import Row
 def list_volume_files(base):
     out = []
     try:
-        for f in dbutils.fs.ls(base):
-            if f.isDir():
-                out.extend(list_volume_files(f.path))
-            elif f.name.lower().endswith((".xlsx", ".xls")):
-                out.append(f.path)
+        for entry in os.scandir(base):
+            if entry.is_dir():
+                out.extend(list_volume_files(entry.path))
+            elif entry.name.lower().endswith((".xlsx", ".xls")):
+                out.append(entry.path)
     except Exception:
         pass
     return out
@@ -96,7 +105,7 @@ new_files = [p for p in to_process if p not in processed_paths]
 
 # COMMAND ----------
 
-sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "python"))
+sys.path.insert(0, os.path.join(_notebook_dir(), "..", "python"))
 import pandas as pd
 from validator import validate_dataframe
 
@@ -106,17 +115,11 @@ now = datetime.utcnow()
 audit_rows = []
 closure_dfs = []
 
-import tempfile
-import shutil
 for file_path in to_process:
     file_name = file_path.split("/")[-1]
     try:
-        # Copy to local temp file for pandas (Volume may not be directly readable by pandas)
-        with tempfile.NamedTemporaryFile(suffix=os.path.splitext(file_name)[1], delete=False) as tmp:
-            tmp_path = tmp.name
-        dbutils.fs.cp(file_path, f"file:{tmp_path}")
-        pdf = pd.read_excel(tmp_path, sheet_name=0, header=0)
-        os.unlink(tmp_path)
+        pdf = pd.read_excel(file_path, sheet_name=0, header=0)
+        pdf.columns = [c.strip().lower().replace(" ", "_") for c in pdf.columns]
     except Exception as e:
         audit_rows.append({
             "file_name": file_name,

@@ -47,6 +47,10 @@ def safe_schema(schema: str) -> str:
     return safe_identifier(schema, DEFAULT_SCHEMA)
 
 
+def safe_volume(volume: str) -> str:
+    return safe_identifier(volume, DEFAULT_VOLUME_RAW)
+
+
 def log(step: str, message: str, *args: Any) -> None:
     """Print a consistent log line for job steps."""
     prefix = f"[{step}]"

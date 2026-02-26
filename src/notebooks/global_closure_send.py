@@ -26,8 +26,18 @@ dbutils.widgets.text("teams_webhook_url", "", "Optional: Teams incoming webhook 
 # COMMAND ----------
 
 import sys
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "python"))
-from notebook_utils import safe_catalog, safe_schema, log
+
+def _notebook_dir():
+    """Resolve the notebook's parent directory in the Databricks workspace filesystem."""
+    try:
+        ctx = dbutils.notebook.entry_point.getDbutils().notebook().getContext()
+        nb_path = ctx.notebookPath().get()
+        return "/Workspace" + os.path.dirname(nb_path)
+    except Exception:
+        return "/Workspace"
+
+sys.path.insert(0, os.path.join(_notebook_dir(), "..", "python"))
+from notebook_utils import safe_catalog, safe_schema, safe_identifier, log
 
 catalog = safe_catalog(dbutils.widgets.get("catalog"))
 schema = safe_schema(dbutils.widgets.get("schema"))
@@ -38,7 +48,7 @@ global_sent_table = f"{full_schema}.global_closure_sent"
 recipients_table = f"{full_schema}.global_closure_recipients"
 scope_sp = (dbutils.widgets.get("secret_scope_sharepoint") or "getnet-sharepoint").strip()
 scope_outlook = (dbutils.widgets.get("secret_scope_outlook") or "getnet-outlook").strip()
-run_prefix_job_key = (dbutils.widgets.get("run_prefix_job_key") or "global_closure_send").strip()
+run_prefix_job_key = safe_identifier(dbutils.widgets.get("run_prefix_job_key") or "global_closure_send", "global_closure_send")
 require_reviewer_approval = dbutils.widgets.get("require_reviewer_approval") == "true"
 
 period = datetime.utcnow().strftime("%Y-%m")
@@ -124,22 +134,12 @@ out_volume = "global_closure_output"
 out_dir = f"/Volumes/{catalog}/{schema}/{out_volume}"
 out_name = f"{run_number:03d}_global_closure_{period}.csv"
 out_path = f"{out_dir}/{out_name}"
-dbutils.fs.mkdirs(out_dir)
+os.makedirs(out_dir, exist_ok=True)
 log("GLOBAL_SEND", f"Execution #{run_number} — writing {out_name}")
 
-# Write to local temp then copy to volume
-import tempfile
-with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False, newline="") as tmp:
-    pdf.to_csv(tmp.name, index=False)
-    with open(tmp.name, "rb") as f:
-        content = f.read()
-    os.unlink(tmp.name)
-# Write to volume via dbfs
-with tempfile.NamedTemporaryFile(delete=False, suffix=".csv") as tmp:
-    tmp.write(content)
-    tmp.flush()
-    dbutils.fs.cp(f"file:{tmp.name}", out_path)
-    os.unlink(tmp.name)
+csv_content = pdf.to_csv(index=False)
+with open(out_path, "w") as f:
+    f.write(csv_content)
 
 # COMMAND ----------
 
@@ -195,7 +195,7 @@ tenant_id = dbutils.secrets.get(scope=scope_sp, key="tenant_id")
 client_id = dbutils.secrets.get(scope=scope_sp, key="client_id")
 client_secret = dbutils.secrets.get(scope=scope_sp, key="client_secret")
 
-sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "python"))
+sys.path.insert(0, os.path.join(_notebook_dir(), "..", "python"))
 from outlook_send import get_graph_token, send_mail_with_attachment
 
 token = get_graph_token(tenant_id, client_id, client_secret)
@@ -268,7 +268,7 @@ log("GLOBAL_SEND", f"Global closure for {period} sent to {financial_lead_email}"
 teams_url = dbutils.widgets.get("teams_webhook_url").strip()
 if teams_url:
     try:
-        sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "python"))
+        sys.path.insert(0, os.path.join(_notebook_dir(), "..", "python"))
         from teams_send import send_teams_webhook, format_global_sent_message
         send_teams_webhook(teams_url, format_global_sent_message(period, out_name))
         print("Teams notification sent.")

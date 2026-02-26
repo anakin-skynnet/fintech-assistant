@@ -23,7 +23,7 @@ resources:
                 package: pyyaml
           new_cluster:
             spark_version: "13.3.x-scala2.12"
-            node_type_id: "Standard_DS3_v2"
+            node_type_id: ${var.node_type_id}
             num_workers: 0
             data_security_mode: USER_ISOLATION
             spark_conf:

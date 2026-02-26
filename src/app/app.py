@@ -396,6 +396,14 @@ def main():
             placeholder="raw_closure_files",
         )
         st.markdown("---")
+        _ws = os.environ.get("DATABRICKS_HOST", "https://adb-984752964297111.11.azuredatabricks.net")
+        st.markdown("**Databricks resources**")
+        st.markdown(
+            f"[Lakeview dashboard]({_ws}/sql/dashboards/01f1130676261483b4cd8d8357f0fc00) · "
+            f"[Genie: Valid files]({_ws}/genie/rooms/01f1130cb4e519e2911257a440a950c1) · "
+            f"[Genie: BU Rejected]({_ws}/genie/rooms/01f1130cb9491205b80378e0736493f5)"
+        )
+        st.markdown("---")
         st.caption("Pipeline: Ingest → Validate → Reject → Notify BU → Global send")
 
     with st.spinner("Loading closure data..."):
@@ -540,9 +548,10 @@ def main():
                 reason = (a.rejection_explanation or a.rejection_reason or "")[:80]
                 if (a.rejection_explanation or a.rejection_reason) and len((a.rejection_explanation or a.rejection_reason or "")) > 80:
                     reason += "..."
+                path = a.file_path_in_volume or ""
                 return [
                     a.file_name,
-                    a.file_path_in_volume[:60] + "..." if len(a.file_path_in_volume) > 60 else a.file_path_in_volume,
+                    path[:60] + "..." if len(path) > 60 else path,
                     a.business_unit or "",
                     a.validation_status,
                     reason,
@@ -663,7 +672,7 @@ def main():
                     )
                     if not use_real_data:
                         st.caption("💡 Save is only available when connected to Databricks (Real data source). On mock, edits are for preview only.")
-                    if st.button("Save corrected file", type="primary", key="save_corrected_btn"):
+                    if st.button("Save corrected file", type="primary", key="save_corrected_btn", disabled=not use_real_data):
                         try:
                             out_df = edited.drop(columns=["Fix required"], errors="ignore")
                             from io import BytesIO

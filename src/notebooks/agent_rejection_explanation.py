@@ -18,7 +18,17 @@ dbutils.widgets.text("schema", "financial_closure", "Schema")
 # COMMAND ----------
 
 import sys
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "python"))
+
+def _notebook_dir():
+    """Resolve the notebook's parent directory in the Databricks workspace filesystem."""
+    try:
+        ctx = dbutils.notebook.entry_point.getDbutils().notebook().getContext()
+        nb_path = ctx.notebookPath().get()
+        return "/Workspace" + os.path.dirname(nb_path)
+    except Exception:
+        return "/Workspace"
+
+sys.path.insert(0, os.path.join(_notebook_dir(), "..", "python"))
 from notebook_utils import safe_catalog, safe_schema, log
 
 catalog = safe_catalog(dbutils.widgets.get("catalog"))
@@ -59,7 +69,7 @@ def generate_explanation(errors_json: str) -> str:
         from databricks.ai import ai
         reply = ai.llm.chat(
             system=system_msg,
-            messages=[{"role": "user", "content": user_tpl.format(validation_errors_summary=errors_json)}],
+            messages=[{"role": "user", "content": user_tpl.replace("{validation_errors_summary}", errors_json)}],
         )
         return (reply.choices[0].message.content or "").strip() if reply.choices else ""
     except Exception as e:

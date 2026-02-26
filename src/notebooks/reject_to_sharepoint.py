@@ -18,7 +18,17 @@ dbutils.widgets.text("secret_scope", "getnet-sharepoint", "Secret scope")
 # COMMAND ----------
 
 import sys
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "python"))
+
+def _notebook_dir():
+    """Resolve the notebook's parent directory in the Databricks workspace filesystem."""
+    try:
+        ctx = dbutils.notebook.entry_point.getDbutils().notebook().getContext()
+        nb_path = ctx.notebookPath().get()
+        return "/Workspace" + os.path.dirname(nb_path)
+    except Exception:
+        return "/Workspace"
+
+sys.path.insert(0, os.path.join(_notebook_dir(), "..", "python"))
 from notebook_utils import safe_catalog, safe_schema, log
 
 catalog = safe_catalog(dbutils.widgets.get("catalog"))
@@ -64,7 +74,6 @@ rows = df.collect()
 
 # COMMAND ----------
 
-import tempfile
 now = datetime.utcnow()
 updated_ids = []
 
@@ -72,11 +81,8 @@ for row in rows:
     file_path = row.file_path_in_volume
     file_name = row.file_name
     try:
-        with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(file_name)[1]) as tmp:
-            dbutils.fs.cp(file_path, f"file:{tmp.name}")
-            with open(tmp.name, "rb") as f:
-                content = f.read()
-            os.unlink(tmp.name)
+        with open(file_path, "rb") as f:
+            content = f.read()
         upload_file(access_token, site_id, drive_id, review_folder_path, file_name, content)
         updated_ids.append((file_path, now))
     except Exception as e:

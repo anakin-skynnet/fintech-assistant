@@ -39,7 +39,18 @@ body = message + ("\n\nLink: " + link if link else "")
 
 # COMMAND ----------
 
-sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "python"))
+import sys
+
+def _notebook_dir():
+    """Resolve the notebook's parent directory in the Databricks workspace filesystem."""
+    try:
+        ctx = dbutils.notebook.entry_point.getDbutils().notebook().getContext()
+        nb_path = ctx.notebookPath().get()
+        return "/Workspace" + os.path.dirname(nb_path)
+    except Exception:
+        return "/Workspace"
+
+sys.path.insert(0, os.path.join(_notebook_dir(), "..", "python"))
 tenant_id = dbutils.secrets.get(scope=secret_scope, key="tenant_id")
 client_id = dbutils.secrets.get(scope=secret_scope, key="client_id")
 client_secret = dbutils.secrets.get(scope=secret_scope, key="client_secret")

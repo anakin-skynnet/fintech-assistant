@@ -19,12 +19,22 @@ dbutils.widgets.text("secret_scope", "getnet-sharepoint", "Secret scope for Shar
 # COMMAND ----------
 
 import sys
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "python"))
-from notebook_utils import safe_catalog, safe_schema, log
+
+def _notebook_dir():
+    """Resolve the notebook's parent directory in the Databricks workspace filesystem."""
+    try:
+        ctx = dbutils.notebook.entry_point.getDbutils().notebook().getContext()
+        nb_path = ctx.notebookPath().get()
+        return "/Workspace" + os.path.dirname(nb_path)
+    except Exception:
+        return "/Workspace"
+
+sys.path.insert(0, os.path.join(_notebook_dir(), "..", "python"))
+from notebook_utils import safe_catalog, safe_schema, safe_volume, log
 
 catalog = safe_catalog(dbutils.widgets.get("catalog"))
 schema = safe_schema(dbutils.widgets.get("schema"))
-volume_raw = (dbutils.widgets.get("volume_raw") or "raw_closure_files").strip()
+volume_raw = safe_volume(dbutils.widgets.get("volume_raw"))
 secret_scope = (dbutils.widgets.get("secret_scope") or "getnet-sharepoint").strip()
 
 volume_base = f"/Volumes/{catalog}/{schema}/{volume_raw}"
@@ -70,7 +80,7 @@ files_to_download = [i for i in items if keep(i)]
 # COMMAND ----------
 
 # Ensure volume path exists
-dbutils.fs.mkdirs(volume_path)
+os.makedirs(volume_path, exist_ok=True)
 
 # COMMAND ----------
 
@@ -78,20 +88,14 @@ downloaded = 0
 skipped = 0
 for item in files_to_download:
     dest = f"{volume_path}/{item.name}"
-    try:
-        dbutils.fs.ls(dest)
+    if os.path.exists(dest):
         skipped += 1
         continue
-    except Exception:
-        pass
     try:
         content = download_file(access_token, item.download_url)
-        import tempfile
-        with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(item.name)[1]) as tmp:
-            tmp.write(content)
-            tmp.flush()
-            dbutils.fs.cp(f"file:{tmp.name}", dest)
-        os.unlink(tmp.name)
+        os.makedirs(os.path.dirname(dest), exist_ok=True)
+        with open(dest, "wb") as f:
+            f.write(content)
         downloaded += 1
     except Exception as e:
         log("INGEST", f"Failed to download {item.name}:", e)

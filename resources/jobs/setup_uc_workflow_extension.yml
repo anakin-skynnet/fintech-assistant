@@ -16,7 +16,7 @@ resources:
               schema: ${var.schema}
           new_cluster:
             spark_version: "13.3.x-scala2.12"
-            node_type_id: "Standard_DS3_v2"
+            node_type_id: ${var.node_type_id}
             num_workers: 0
             data_security_mode: USER_ISOLATION
             spark_conf:
@@ -24,3 +24,6 @@ resources:
               spark.master: local[*]
             custom_tags:
               ResourceClass: SingleNode
+          retry_on_timeout: true
+          max_retries: 1
+          min_retry_interval_millis: 30000

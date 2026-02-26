@@ -35,6 +35,9 @@ variables:
   closure_period_type:
     description: "Closure period type (e.g. monthly)"
     default: monthly
+  node_type_id:
+    description: "Cluster node type (Azure: Standard_DS3_v2, AWS: i3.xlarge)"
+    default: Standard_DS3_v2
 
 # Workspace host is taken from the CLI profile (e.g. Azure: https://adb-<workspace-id>.<number>.azuredatabricks.net)
 # Do not set workspace.host here so deploy uses your profile's host.
@@ -46,6 +49,7 @@ targets:
       catalog: getnet_closure_dev
       schema: financial_closure
       volume_raw: raw_closure_files
+      warehouse_id: 2e265b7eb4ba145e
     workspace:
       root_path: /Users/${workspace.current_user.userName}/.bundle/${bundle.name}/dev
 
@@ -80,5 +84,4 @@ targets:
 include:
   - resources/jobs/*.yml
   - resources/apps/*.yml
-  # Uncomment and set var.warehouse_id to deploy the Lakeview dashboard:
-  # - resources/dashboards/*.yml
+  - resources/dashboards/*.yml

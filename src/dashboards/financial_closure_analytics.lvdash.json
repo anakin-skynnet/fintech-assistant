@@ -19,6 +19,26 @@
       "name": "ds_amount_by_bu",
       "displayName": "Total amount by business unit",
       "query": "SELECT COALESCE(business_unit, 'Unknown') AS business_unit, SUM(COALESCE(amount, 0)) AS total_amount FROM closure_data GROUP BY business_unit ORDER BY total_amount DESC"
+    },
+    {
+      "name": "ds_rejection_rate",
+      "displayName": "Rejection rate by BU",
+      "query": "SELECT business_unit, COUNT(*) AS total_files, SUM(CASE WHEN validation_status = 'rejected' THEN 1 ELSE 0 END) AS rejected_files, ROUND(100.0 * SUM(CASE WHEN validation_status = 'rejected' THEN 1 ELSE 0 END) / COUNT(*), 1) AS rejection_pct FROM closure_file_audit GROUP BY business_unit ORDER BY rejection_pct DESC"
+    },
+    {
+      "name": "ds_top_errors",
+      "displayName": "Top validation errors",
+      "query": "SELECT error_field, invalid_cause, COUNT(*) AS occurrence_count FROM closure_audit_errors GROUP BY error_field, invalid_cause ORDER BY occurrence_count DESC LIMIT 15"
+    },
+    {
+      "name": "ds_kpi_summary",
+      "displayName": "KPI summary",
+      "query": "SELECT COUNT(*) AS total_files, SUM(CASE WHEN validation_status = 'valid' THEN 1 ELSE 0 END) AS valid_files, SUM(CASE WHEN validation_status = 'rejected' THEN 1 ELSE 0 END) AS rejected_files, ROUND(100.0 * SUM(CASE WHEN validation_status = 'valid' THEN 1 ELSE 0 END) / NULLIF(COUNT(*), 0), 1) AS pct_valid FROM closure_file_audit"
+    },
+    {
+      "name": "ds_timeline",
+      "displayName": "Files processed over time",
+      "query": "SELECT DATE(processed_at) AS process_date, validation_status, COUNT(*) AS file_count FROM closure_file_audit WHERE processed_at IS NOT NULL GROUP BY DATE(processed_at), validation_status ORDER BY process_date"
     }
   ],
   "pages": [
@@ -29,9 +49,113 @@
         {
           "widget": {
             "name": "title_widget",
-            "textbox_spec": "# Getnet Financial Closure Analytics\nBy business unit and global closure."
+            "textbox_spec": "# Getnet Financial Closure Analytics\nAutomated financial closure monitoring — business unit performance, validation health, and global closure status."
           },
           "position": { "x": 0, "y": 0, "width": 12, "height": 2 }
+        },
+        {
+          "widget": {
+            "name": "counter_total",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_kpi_summary",
+                  "fields": [
+                    { "name": "total_files", "expression": "`total_files`" }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "counter",
+              "encodings": {
+                "value": { "fieldName": "total_files", "displayName": "Total files" }
+              },
+              "frame": { "showTitle": true, "title": "Total files processed" }
+            }
+          },
+          "position": { "x": 0, "y": 2, "width": 3, "height": 3 }
+        },
+        {
+          "widget": {
+            "name": "counter_valid",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_kpi_summary",
+                  "fields": [
+                    { "name": "valid_files", "expression": "`valid_files`" }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "counter",
+              "encodings": {
+                "value": { "fieldName": "valid_files", "displayName": "Valid files" }
+              },
+              "frame": { "showTitle": true, "title": "Valid files" }
+            }
+          },
+          "position": { "x": 3, "y": 2, "width": 3, "height": 3 }
+        },
+        {
+          "widget": {
+            "name": "counter_rejected",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_kpi_summary",
+                  "fields": [
+                    { "name": "rejected_files", "expression": "`rejected_files`" }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "counter",
+              "encodings": {
+                "value": { "fieldName": "rejected_files", "displayName": "Rejected files" }
+              },
+              "frame": { "showTitle": true, "title": "Rejected files" }
+            }
+          },
+          "position": { "x": 6, "y": 2, "width": 3, "height": 3 }
+        },
+        {
+          "widget": {
+            "name": "counter_pct_valid",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_kpi_summary",
+                  "fields": [
+                    { "name": "pct_valid", "expression": "`pct_valid`" }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "counter",
+              "encodings": {
+                "value": { "fieldName": "pct_valid", "displayName": "% valid" }
+              },
+              "frame": { "showTitle": true, "title": "Validation success %" }
+            }
+          },
+          "position": { "x": 9, "y": 2, "width": 3, "height": 3 }
         },
         {
           "widget": {
@@ -59,7 +183,79 @@
               "frame": { "showTitle": true, "title": "Total amount by business unit" }
             }
           },
-          "position": { "x": 0, "y": 2, "width": 6, "height": 8 }
+          "position": { "x": 0, "y": 5, "width": 6, "height": 8 }
+        },
+        {
+          "widget": {
+            "name": "chart_rejection_rate",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_rejection_rate",
+                  "fields": [
+                    { "name": "business_unit", "expression": "`business_unit`" },
+                    { "name": "rejection_pct", "expression": "`rejection_pct`" }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "bar",
+              "encodings": {
+                "x": { "fieldName": "rejection_pct", "scale": { "type": "quantitative" }, "displayName": "Rejection %" },
+                "y": { "fieldName": "business_unit", "scale": { "type": "categorical", "sort": { "by": "x-reversed" } }, "displayName": "Business unit" }
+              },
+              "frame": { "showTitle": true, "title": "File rejection rate by BU" }
+            }
+          },
+          "position": { "x": 6, "y": 5, "width": 6, "height": 8 }
+        },
+        {
+          "widget": {
+            "name": "title_timeline",
+            "textbox_spec": "## Processing timeline"
+          },
+          "position": { "x": 0, "y": 13, "width": 12, "height": 1 }
+        },
+        {
+          "widget": {
+            "name": "chart_timeline",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_timeline",
+                  "fields": [
+                    { "name": "process_date", "expression": "`process_date`" },
+                    { "name": "file_count", "expression": "`file_count`" },
+                    { "name": "validation_status", "expression": "`validation_status`" }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "bar",
+              "encodings": {
+                "x": { "fieldName": "process_date", "scale": { "type": "temporal" }, "displayName": "Date" },
+                "y": { "fieldName": "file_count", "scale": { "type": "quantitative" }, "displayName": "Files" },
+                "color": { "fieldName": "validation_status", "scale": { "type": "categorical" }, "displayName": "Status" }
+              },
+              "frame": { "showTitle": true, "title": "Files processed over time (valid vs rejected)" }
+            }
+          },
+          "position": { "x": 0, "y": 14, "width": 12, "height": 7 }
+        },
+        {
+          "widget": {
+            "name": "title_detail",
+            "textbox_spec": "## Detail tables"
+          },
+          "position": { "x": 0, "y": 21, "width": 12, "height": 1 }
         },
         {
           "widget": {
@@ -85,14 +281,39 @@
               "frame": { "showTitle": true, "title": "Closure by business unit and period" }
             }
           },
-          "position": { "x": 6, "y": 2, "width": 6, "height": 8 }
+          "position": { "x": 0, "y": 22, "width": 6, "height": 8 }
+        },
+        {
+          "widget": {
+            "name": "table_top_errors",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_top_errors",
+                  "fields": [
+                    { "name": "error_field", "expression": "`error_field`" },
+                    { "name": "invalid_cause", "expression": "`invalid_cause`" },
+                    { "name": "occurrence_count", "expression": "`occurrence_count`" }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "table",
+              "frame": { "showTitle": true, "title": "Top 15 validation errors (field + cause)" }
+            }
+          },
+          "position": { "x": 6, "y": 22, "width": 6, "height": 8 }
         },
         {
           "widget": {
             "name": "title_audit",
-            "textbox_spec": "## Validation status by business unit"
+            "textbox_spec": "## Validation status"
           },
-          "position": { "x": 0, "y": 10, "width": 6, "height": 1 }
+          "position": { "x": 0, "y": 30, "width": 6, "height": 1 }
         },
         {
           "widget": {
@@ -117,14 +338,14 @@
               "frame": { "showTitle": true, "title": "Files valid vs rejected by BU" }
             }
           },
-          "position": { "x": 0, "y": 11, "width": 6, "height": 6 }
+          "position": { "x": 0, "y": 31, "width": 6, "height": 6 }
         },
         {
           "widget": {
             "name": "title_global",
             "textbox_spec": "## Global financial closure sent"
           },
-          "position": { "x": 6, "y": 10, "width": 6, "height": 1 }
+          "position": { "x": 6, "y": 30, "width": 6, "height": 1 }
         },
         {
           "widget": {
@@ -149,7 +370,7 @@
               "frame": { "showTitle": true, "title": "Global closure email log" }
             }
           },
-          "position": { "x": 6, "y": 11, "width": 6, "height": 6 }
+          "position": { "x": 6, "y": 31, "width": 6, "height": 6 }
         }
       ]
     }
